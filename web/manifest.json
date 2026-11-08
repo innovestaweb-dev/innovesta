@@ -1,0 +1,36 @@
+{
+    "name": "INNOVISTA | Architectural Visualization Studio",
+    "short_name": "INNOVISTA",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "background_color": "#171717",
+    "theme_color": "#171717",
+    "description": "INNOVISTA creates realistic 3D architectural renders, cinematic animation, interactive walkthroughs and VR experiences for architects, designers and property developers.",
+    "orientation": "any",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}
