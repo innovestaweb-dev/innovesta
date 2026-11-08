@@ -1,7 +1,91 @@
+import 'dart:math';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/admin_material.dart';
 import '../services/material_service.dart';
+
+// -----------------------------------------------------------------------------
+// Image upload config
+// -----------------------------------------------------------------------------
+
+const String _storageBucket = 'project-media';
+const String _storageFolder = 'materials';
+const int _maxInputBytes = 15 * 1024 * 1024; // before compression
+const int _maxUploadBytes = 1024 * 1024; // after compression
+const int _maxImageDimension = 1200;
+const int _jpegQuality = 82;
+const Set<String> _imageExtensions = {'jpg', 'jpeg', 'png', 'webp'};
+
+class _ImageJob {
+  final Uint8List bytes;
+  final String extension;
+  const _ImageJob(this.bytes, this.extension);
+}
+
+class _ProcessedImage {
+  final Uint8List bytes;
+  final String extension;
+  const _ProcessedImage(this.bytes, this.extension);
+}
+
+// Top-level so it can run through `compute`.
+_ProcessedImage _compressImage(_ImageJob job) {
+  final original = _ProcessedImage(job.bytes, job.extension);
+
+  try {
+    final decoded = img.decodeImage(job.bytes);
+    if (decoded == null) return original;
+
+    var image = decoded;
+
+    if (job.extension == 'jpg' || job.extension == 'jpeg') {
+      image = img.bakeOrientation(image);
+    }
+
+    final longest = image.width > image.height ? image.width : image.height;
+    final needsResize = longest > _maxImageDimension;
+
+    if (needsResize) {
+      image = image.width >= image.height
+          ? img.copyResize(image, width: _maxImageDimension)
+          : img.copyResize(image, height: _maxImageDimension);
+    }
+
+    // Keep PNGs that have transparency as PNG, everything else becomes JPG.
+    final keepPng = job.extension == 'png' && image.numChannels == 4;
+
+    final encoded = keepPng
+        ? img.encodePng(image)
+        : img.encodeJpg(image, quality: _jpegQuality);
+
+    final out = Uint8List.fromList(encoded);
+
+    if (!needsResize && out.length >= job.bytes.length) return original;
+
+    return _ProcessedImage(out, keepPng ? 'png' : 'jpg');
+  } catch (_) {
+    return original;
+  }
+}
+
+String _contentTypeFor(String extension) {
+  return switch (extension) {
+    'png' => 'image/png',
+    'webp' => 'image/webp',
+    _ => 'image/jpeg',
+  };
+}
+
+String _formatBytes(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+}
 
 class AdminMaterialFormPage extends StatefulWidget {
   final AdminMaterial? material;
@@ -80,6 +164,9 @@ class _AdminMaterialFormPageState extends State<AdminMaterialFormPage> {
   bool _isActive = true;
   bool _isSaving = false;
 
+  /// Label of the image field currently uploading (null when idle).
+  String? _uploadingTarget;
+
   bool get _isEditing => widget.material != null;
 
   @override
@@ -152,7 +239,102 @@ class _AdminMaterialFormPageState extends State<AdminMaterialFormPage> {
     super.dispose();
   }
 
+  void _showSnack(String message, {bool isError = false}) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? const Color(0xFF8B3939) : null,
+      ),
+    );
+  }
+
+  Future<void> _pickAndUploadImage(
+    String label,
+    TextEditingController controller,
+  ) async {
+    if (_uploadingTarget != null) return;
+
+    try {
+      final files = await FilePicker.pickFiles(type: FileType.image);
+      if (files.isEmpty) return;
+
+      final file = files.first;
+      final extension = file.name.contains('.')
+          ? file.name.split('.').last.toLowerCase()
+          : 'jpg';
+
+      if (!_imageExtensions.contains(extension)) {
+        _showSnack(
+          'Unsupported format (.$extension). Use JPG, PNG or WEBP.',
+          isError: true,
+        );
+        return;
+      }
+
+      setState(() => _uploadingTarget = label);
+
+      final bytes = await file.readAsBytes();
+
+      if (bytes.isEmpty) {
+        _showSnack('"${file.name}" is empty.', isError: true);
+        return;
+      }
+
+      if (bytes.length > _maxInputBytes) {
+        _showSnack(
+          '"${file.name}" is too large (${_formatBytes(bytes.length)}). '
+          'Maximum is ${_formatBytes(_maxInputBytes)}.',
+          isError: true,
+        );
+        return;
+      }
+
+      final processed = await compute(
+        _compressImage,
+        _ImageJob(bytes, extension),
+      );
+
+      if (processed.bytes.length > _maxUploadBytes) {
+        _showSnack(
+          '"${file.name}" is still too large after compression '
+          '(${_formatBytes(processed.bytes.length)}). Use a smaller image.',
+          isError: true,
+        );
+        return;
+      }
+
+      final suffix = Random().nextInt(0x7fffffff).toRadixString(36);
+      final path =
+          '$_storageFolder/${DateTime.now().millisecondsSinceEpoch}-$suffix.${processed.extension}';
+
+      final storage = Supabase.instance.client.storage.from(_storageBucket);
+
+      await storage.uploadBinary(
+        path,
+        processed.bytes,
+        fileOptions: FileOptions(
+          upsert: false,
+          contentType: _contentTypeFor(processed.extension),
+        ),
+      );
+
+      controller.text = storage.getPublicUrl(path);
+
+      _showSnack('Image uploaded (${_formatBytes(processed.bytes.length)}).');
+    } catch (e, stackTrace) {
+      debugPrint('Material image upload error: $e');
+      debugPrintStack(stackTrace: stackTrace);
+
+      _showSnack('Image upload failed. Please try again.', isError: true);
+    } finally {
+      if (mounted) setState(() => _uploadingTarget = null);
+    }
+  }
+
   Future<void> _saveMaterial() async {
+    if (_uploadingTarget != null) return;
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isSaving = true);
@@ -299,6 +481,102 @@ class _AdminMaterialFormPageState extends State<AdminMaterialFormPage> {
               borderSide: const BorderSide(color: Color(0xFFB94A48)),
             ),
           ),
+        ),
+      ],
+    );
+  }
+
+  String? _validateOptionalUrl(String? value) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) return null;
+
+    final uri = Uri.tryParse(text);
+    final ok =
+        uri != null &&
+        (uri.scheme == 'http' || uri.scheme == 'https') &&
+        uri.host.isNotEmpty;
+
+    return ok ? null : 'Enter a valid image URL or upload an image.';
+  }
+
+  Widget _imageField(String label, TextEditingController controller) {
+    final isUploading = _uploadingTarget == label;
+    final busy = _uploadingTarget != null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _field(
+          label,
+          controller,
+          hint: 'https://...',
+          customValidator: _validateOptionalUrl,
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            OutlinedButton.icon(
+              onPressed: busy
+                  ? null
+                  : () => _pickAndUploadImage(label, controller),
+              icon: isUploading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFFB6A080),
+                      ),
+                    )
+                  : const Icon(Icons.upload_rounded, size: 18),
+              label: Text(isUploading ? 'Uploading...' : 'Upload image'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFB6A080),
+                side: const BorderSide(color: Color(0xFF39352F)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton(
+              onPressed: busy ? null : controller.clear,
+              child: const Text(
+                'Clear',
+                style: TextStyle(color: Color(0xFFAAA69F)),
+              ),
+            ),
+          ],
+        ),
+        ValueListenableBuilder<TextEditingValue>(
+          valueListenable: controller,
+          builder: (context, value, _) {
+            final url = value.text.trim();
+
+            if (_validateOptionalUrl(url) != null || url.isEmpty) {
+              return const SizedBox.shrink();
+            }
+
+            return Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(
+                  url,
+                  width: 140,
+                  height: 140,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    width: 140,
+                    height: 140,
+                    color: const Color(0xFF222222),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.broken_image_outlined,
+                      color: Color(0xFF77736D),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ],
     );
@@ -489,9 +767,9 @@ class _AdminMaterialFormPageState extends State<AdminMaterialFormPage> {
             ]),
             _gap(),
             _section('Images & Color', [
-              _field('Sample Image URL', _sampleImageController),
+              _imageField('Sample Image', _sampleImageController),
               _gap(),
-              _field('Application Image URL', _applicationImageController),
+              _imageField('Application Image', _applicationImageController),
               _gap(),
               _field(
                 'HEX Color',
@@ -616,7 +894,9 @@ class _AdminMaterialFormPageState extends State<AdminMaterialFormPage> {
             SizedBox(
               height: 52,
               child: ElevatedButton(
-                onPressed: _isSaving ? null : _saveMaterial,
+                onPressed: (_isSaving || _uploadingTarget != null)
+                    ? null
+                    : _saveMaterial,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFB6A080),
                   foregroundColor: const Color(0xFF171717),
