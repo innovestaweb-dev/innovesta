@@ -1,122 +1,97 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const WHATSAPP_SOURCE = "whatsapp";
-const MAX_PER_MINUTE = 15;
-const MAX_PER_DAY = 300;
+const WHATSAPP_SOURCE = "whatsapp"; // لازم يكون مسموح في client_requests_source_check
 
-const allowedOrigins = (Deno.env.get("ALLOWED_ORIGINS") ?? "")
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "https://placeholder.pages.dev")
   .split(",")
-  .map((o) => o.trim())
+  .map((s) => s.trim().replace(/\/$/, ""))
   .filter(Boolean);
-const allowLocalhost = Deno.env.get("ALLOW_LOCALHOST") === "true";
+const ALLOW_LOCALHOST = Deno.env.get("ALLOW_LOCALHOST") === "true";
 
-function isAllowedOrigin(origin: string | null): boolean {
-  if (!origin) return false;
-  if (allowedOrigins.includes(origin)) return true;
-  if (allowLocalhost && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
-    return true;
-  }
-  return false;
-}
+const MAX_BODY_BYTES = 2048;
+const PER_MINUTE_LIMIT = 15;
+const PER_DAY_LIMIT = 300;
+const PHONE_RE = /^\+?[0-9\s\-()]{7,20}$/;
 
-function corsFor(origin: string | null): Record<string, string> {
-  return {
-    "Access-Control-Allow-Origin": origin ?? "null",
-    "Access-Control-Allow-Headers":
-      "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Vary": "Origin",
-  };
+function isAllowedOrigin(origin: string) {
+  return ALLOWED_ORIGINS.includes(origin) ||
+    (ALLOW_LOCALHOST && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin));
 }
 
 Deno.serve(async (req) => {
   const origin = req.headers.get("origin");
+  const cors = {
+    ...(origin && isAllowedOrigin(origin) ? { "Access-Control-Allow-Origin": origin } : {}),
+    "Vary": "Origin",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
   const json = (data: object, status = 200) =>
     new Response(JSON.stringify(data), {
       status,
-      headers: { ...corsFor(origin), "Content-Type": "application/json" },
+      headers: { ...cors, "Content-Type": "application/json" },
     });
 
-  if (allowedOrigins.length === 0 && !allowLocalhost) {
-    console.error("Missing server config: ALLOWED_ORIGINS");
-    return json({ success: false, message: "Server configuration error" }, 500);
-  }
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+  if (req.method !== "POST") return json({ success: false }, 405);
 
-  if (!isAllowedOrigin(origin)) {
-    return new Response(JSON.stringify({ success: false, message: "Forbidden" }), {
-      status: 403,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsFor(origin) });
-  }
-
-  if (req.method !== "POST") {
-    return json({ success: false, message: "Method not allowed" }, 405);
+  if (origin !== null && !isAllowedOrigin(origin)) {
+    console.error("Blocked origin:", origin);
+    return json({ success: false }, 403);
   }
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-
-    if (!supabaseUrl || !serviceRoleKey) {
-      console.error("Missing Supabase server configuration");
-      return json({ success: false, message: "Server configuration error" }, 500);
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !serviceKey) {
+      console.error("Missing server config");
+      return json({ success: false }, 500);
     }
 
     const raw = await req.text();
-    if (raw.length > 5000) {
-      return json({ success: false, message: "Payload too large" }, 413);
+    if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) {
+      return json({ success: false }, 413);
     }
 
-    let data: Record<string, unknown>;
-    try {
-      data = JSON.parse(raw);
-    } catch {
-      return json({ success: false, message: "Invalid JSON" }, 400);
+    let data: any;
+    try { data = JSON.parse(raw); } catch { return json({ success: false }, 400); }
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      return json({ success: false }, 400);
     }
 
-    if (data.source !== WHATSAPP_SOURCE) {
-      return json({ success: false, message: "Invalid source" }, 400);
+    if (data.source !== "whatsapp") return json({ success: false }, 400);
+
+    const name = typeof data.name === "string" && data.name.trim()
+      ? data.name.replace(/[\u0000-\u001F\u007F]/g, " ").trim().slice(0, 200)
+      : null;
+
+    let phone = typeof data.phone === "string" && data.phone.trim()
+      ? data.phone.trim().slice(0, 50) : null;
+    if (phone && !PHONE_RE.test(phone)) phone = null;
+
+    let pageUrl: string | null = null;
+    if (typeof data.page_url === "string") {
+      try {
+        const u = new URL(data.page_url);
+        if (isAllowedOrigin(u.origin)) pageUrl = data.page_url.slice(0, 2000);
+      } catch { /* تجاهل */ }
     }
 
-    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+    const supabase = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    // Throttle: per minute and per day (global for WhatsApp leads)
-    const now = Date.now();
-    const minuteAgo = new Date(now - 60_000).toISOString();
-    const dayAgo = new Date(now - 86_400_000).toISOString();
+    const countSince = async (ms: number) => {
+      const { count } = await supabase
+        .from("client_requests")
+        .select("id", { count: "exact", head: true })
+        .eq("source", WHATSAPP_SOURCE)
+        .gte("created_at", new Date(Date.now() - ms).toISOString());
+      return count ?? 0;
+    };
 
-    const { count: lastMinute } = await supabase
-      .from("client_requests")
-      .select("id", { count: "exact", head: true })
-      .eq("source", WHATSAPP_SOURCE)
-      .gte("created_at", minuteAgo);
-
-    if ((lastMinute ?? 0) >= MAX_PER_MINUTE) {
-      return json({ success: false, message: "Too many requests" }, 429);
-    }
-
-    const { count: lastDay } = await supabase
-      .from("client_requests")
-      .select("id", { count: "exact", head: true })
-      .eq("source", WHATSAPP_SOURCE)
-      .gte("created_at", dayAgo);
-
-    if ((lastDay ?? 0) >= MAX_PER_DAY) {
-      return json({ success: false, message: "Too many requests" }, 429);
-    }
-
-    const name =
-      typeof data.name === "string" ? data.name.trim().slice(0, 200) : null;
-    const phone =
-      typeof data.phone === "string" ? data.phone.trim().slice(0, 50) : null;
-    const pageUrl =
-      typeof data.page_url === "string" ? data.page_url.slice(0, 2000) : null;
+    if ((await countSince(60_000)) >= PER_MINUTE_LIMIT) return json({ success: false }, 429);
+    if ((await countSince(86_400_000)) >= PER_DAY_LIMIT) return json({ success: false }, 429);
 
     const { error } = await supabase.from("client_requests").insert({
       source: WHATSAPP_SOURCE,
@@ -128,13 +103,12 @@ Deno.serve(async (req) => {
     });
 
     if (error) {
-      console.error("WhatsApp lead database error:", error);
-      return json({ success: false, message: "Database save failed" }, 500);
+      console.error("DB error:", error.message);
+      return json({ success: false }, 500);
     }
-
-    return json({ success: true, message: "WhatsApp inquiry recorded" });
-  } catch (error) {
-    console.error("WhatsApp function error:", error);
-    return json({ success: false, message: "Unable to process request" }, 500);
+    return json({ success: true });
+  } catch (e) {
+    console.error("Function error:", e instanceof Error ? e.message : e);
+    return json({ success: false }, 500);
   }
 });
