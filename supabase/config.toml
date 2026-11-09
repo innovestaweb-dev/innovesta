@@ -7,3 +7,7 @@ entrypoint = "./functions/submit-client-request/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/innovesta_co/index.ts"
+  [functions.track-visit]
+  enabled = true
+  verify_jwt = false
+  entrypoint = "./functions/track-visit/index.ts"

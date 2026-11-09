@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'visit_tracker.dart';
 import 'admin/admin_gate_page.dart';
 import 'app_language.dart';
 import 'app_routes.dart';
@@ -147,8 +148,10 @@ class FormRealApp extends StatelessWidget {
     AppRoutes.admin: (context) => const AdminGatePage(),
   };
 
-  static final List<NavigatorObserver> _observers = [SeoRouteObserver()];
-
+  static final List<NavigatorObserver> _observers = [
+    SeoRouteObserver(),
+    VisitRouteObserver(),
+  ];
   @override
   Widget build(BuildContext context) {
     // Single source of truth for the language: AppLanguage.locale.
