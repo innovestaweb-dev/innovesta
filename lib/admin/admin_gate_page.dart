@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -50,7 +51,10 @@ class _AdminGatePageState extends State<AdminGatePage> {
   void initState() {
     super.initState();
 
-    _subscription = _supabase.auth.onAuthStateChange.listen((_) => _evaluate());
+    _subscription = _supabase.auth.onAuthStateChange.listen((_) {
+      if (_state == _GateState.enroll) return;
+      _evaluate();
+    });
     _evaluate();
   }
 
@@ -466,7 +470,7 @@ class _MfaEnrollViewState extends State<_MfaEnrollView> {
   String? _factorId;
   String? _secret;
   String? _error;
-
+  String? _qrUri;
   @override
   void initState() {
     super.initState();
@@ -512,6 +516,7 @@ class _MfaEnrollViewState extends State<_MfaEnrollView> {
       setState(() {
         _factorId = response.id;
         _secret = response.totp?.secret;
+        _qrUri = response.totp?.uri;
       });
     } catch (e) {
       debugPrint('MFA enroll error: $e');
@@ -589,6 +594,53 @@ class _MfaEnrollViewState extends State<_MfaEnrollView> {
         ),
         const SizedBox(height: 18),
         if (secret != null) ...[
+          if (_qrUri != null && _qrUri!.isNotEmpty) ...[
+            const Text(
+              'Scan QR Code',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: _ivory,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: QrImageView(
+                  data: _qrUri!,
+                  version: QrVersions.auto,
+                  size: 210,
+                  backgroundColor: Colors.white,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            const Text(
+              'Open Google Authenticator and scan this QR code.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: _muted, fontSize: 12),
+            ),
+
+            const SizedBox(height: 20),
+          ],
+
+          const Text(
+            'Or enter the setup key manually',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: _ivory, fontSize: 13),
+          ),
+
+          const SizedBox(height: 10),
+
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
@@ -602,8 +654,8 @@ class _MfaEnrollViewState extends State<_MfaEnrollView> {
                     secret,
                     style: const TextStyle(
                       color: _ivory,
-                      fontSize: 14,
-                      letterSpacing: 1.5,
+                      fontSize: 13,
+                      letterSpacing: 1,
                     ),
                   ),
                 ),
@@ -611,6 +663,7 @@ class _MfaEnrollViewState extends State<_MfaEnrollView> {
                   tooltip: 'Copy key',
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: secret));
+
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Setup key copied.')),
                     );
@@ -620,7 +673,9 @@ class _MfaEnrollViewState extends State<_MfaEnrollView> {
               ],
             ),
           ),
-          const SizedBox(height: 18),
+
+          const SizedBox(height: 20),
+
           _CodeField(controller: _codeController, onSubmit: _confirm),
         ],
         if (_error != null) ...[
