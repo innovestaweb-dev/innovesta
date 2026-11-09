@@ -20,6 +20,7 @@ import 'mood_board/models/design_color_plan.dart';
 import 'mood_board/models/material_recommendation.dart';
 import 'mood_board/models/material_option.dart';
 import 'material_library.dart';
+import 'material_remote_source.dart';
 
 const Color bgColor = Color(0xFF171717);
 const Color surfaceColor = Color(0xFF222222);
@@ -113,7 +114,9 @@ class _MaterialBoardPageState extends State<MaterialBoardPage> {
   final List<SelectedMaterial> _selectedMaterials = [];
   final List<ExtractedColor> _customColors = [];
 
-  final List<MaterialOption> _materials = MaterialLibrary.materials;
+  /// Starts with the built-in library so the page works instantly (and offline),
+  /// then switches to the materials managed from the admin panel (Supabase).
+  List<MaterialOption> _materials = MaterialLibrary.materials;
 
   /// True only after the user uploaded an image and colors were extracted.
   bool get _hasUploadedImage => _extractedColorAnalyses.isNotEmpty;
@@ -515,6 +518,24 @@ class _MaterialBoardPageState extends State<MaterialBoardPage> {
         ),
       );
     }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRemoteMaterials();
+  }
+
+  Future<void> _loadRemoteMaterials() async {
+    final remote = await MaterialRemoteSource.loadActive();
+
+    // Nothing usable from Supabase: keep the built-in library.
+    if (remote.isEmpty || !mounted) return;
+
+    setState(() => _materials = remote);
+
+    // Refresh recommendations if the user already uploaded an image.
+    _rebuildRecommendations();
   }
 
   @override
