@@ -14,14 +14,92 @@ class AdminMaterialsPage extends StatefulWidget {
 class _AdminMaterialsPageState extends State<AdminMaterialsPage> {
   final MaterialService _service = MaterialService();
 
+  final TextEditingController _searchController = TextEditingController();
+
   List<AdminMaterial> _materials = [];
   bool _isLoading = true;
   String? _error;
+
+  String _query = '';
+  String _categoryFilter = _all;
+  String _statusFilter = _all;
+
+  static const String _all = 'All';
+  static const String _activeOnly = 'Active';
+  static const String _inactiveOnly = 'Inactive';
 
   @override
   void initState() {
     super.initState();
     _loadMaterials();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Search & filters
+  // ---------------------------------------------------------------------------
+
+  String _categoryOf(AdminMaterial m) =>
+      m.categoryEn.isNotEmpty ? m.categoryEn : m.category;
+
+  List<String> get _categories {
+    final set = <String>{};
+    for (final m in _materials) {
+      final c = _categoryOf(m).trim();
+      if (c.isNotEmpty) set.add(c);
+    }
+    final list = set.toList()..sort();
+    return [_all, ...list];
+  }
+
+  String get _effectiveCategory =>
+      _categories.contains(_categoryFilter) ? _categoryFilter : _all;
+
+  bool get _hasActiveFilters =>
+      _query.trim().isNotEmpty ||
+      _effectiveCategory != _all ||
+      _statusFilter != _all;
+
+  List<AdminMaterial> get _filteredMaterials {
+    final query = _query.trim().toLowerCase();
+    final category = _effectiveCategory;
+
+    return _materials.where((m) {
+      if (category != _all && _categoryOf(m) != category) return false;
+      if (_statusFilter == _activeOnly && !m.isActive) return false;
+      if (_statusFilter == _inactiveOnly && m.isActive) return false;
+
+      if (query.isEmpty) return true;
+
+      final haystack = [
+        m.nameEn,
+        m.nameAr,
+        m.name,
+        m.categoryEn,
+        m.categoryAr,
+        m.materialTypeEn,
+        m.materialTypeAr,
+        m.colorFamily,
+        m.finishEn,
+        m.hex,
+      ].join(' ').toLowerCase();
+
+      return haystack.contains(query);
+    }).toList();
+  }
+
+  void _clearFilters() {
+    _searchController.clear();
+    setState(() {
+      _query = '';
+      _categoryFilter = _all;
+      _statusFilter = _all;
+    });
   }
 
   Future<void> _loadMaterials() async {
@@ -164,9 +242,129 @@ class _AdminMaterialsPageState extends State<AdminMaterialsPage> {
               ),
             ],
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 22),
+          if (!_isLoading && _error == null && _materials.isNotEmpty) ...[
+            _buildFilterBar(),
+            const SizedBox(height: 20),
+          ],
           Expanded(child: _buildContent()),
         ],
+      ),
+    );
+  }
+
+  Widget _buildFilterBar() {
+    final shown = _filteredMaterials.length;
+
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        SizedBox(
+          width: 320,
+          child: TextField(
+            controller: _searchController,
+            onChanged: (value) => setState(() => _query = value),
+            style: const TextStyle(color: Color(0xFFF4EFE6), fontSize: 14),
+            decoration: InputDecoration(
+              hintText: 'Search name, category, type, color...',
+              hintStyle: const TextStyle(color: Color(0xFF77736D)),
+              prefixIcon: const Icon(
+                Icons.search,
+                color: Color(0xFFB6A080),
+                size: 20,
+              ),
+              suffixIcon: _query.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear search',
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _query = '');
+                      },
+                      icon: const Icon(
+                        Icons.close,
+                        color: Color(0xFFAAA69F),
+                        size: 18,
+                      ),
+                    ),
+              filled: true,
+              fillColor: const Color(0xFF222222),
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 14,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFF39352F)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFF39352F)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFFB6A080)),
+              ),
+            ),
+          ),
+        ),
+        _buildDropdown(
+          value: _effectiveCategory,
+          options: _categories,
+          onChanged: (value) => setState(() => _categoryFilter = value),
+        ),
+        _buildDropdown(
+          value: _statusFilter,
+          options: const [_all, _activeOnly, _inactiveOnly],
+          onChanged: (value) => setState(() => _statusFilter = value),
+        ),
+        Text(
+          _hasActiveFilters
+              ? '$shown of ${_materials.length} materials'
+              : '${_materials.length} materials',
+          style: const TextStyle(color: Color(0xFFAAA69F), fontSize: 12),
+        ),
+        if (_hasActiveFilters)
+          TextButton(
+            onPressed: _clearFilters,
+            child: const Text(
+              'Clear filters',
+              style: TextStyle(color: Color(0xFFB6A080)),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildDropdown({
+    required String value,
+    required List<String> options,
+    required ValueChanged<String> onChanged,
+  }) {
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF222222),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF39352F)),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          dropdownColor: const Color(0xFF222222),
+          style: const TextStyle(color: Color(0xFFF4EFE6), fontSize: 13),
+          iconEnabledColor: const Color(0xFFB6A080),
+          items: options
+              .map((o) => DropdownMenuItem(value: o, child: Text(o)))
+              .toList(),
+          onChanged: (v) {
+            if (v != null) onChanged(v);
+          },
+        ),
       ),
     );
   }
@@ -221,6 +419,32 @@ class _AdminMaterialsPageState extends State<AdminMaterialsPage> {
       );
     }
 
+    final items = _filteredMaterials;
+
+    if (items.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.search_off, color: Color(0xFFB6A080), size: 44),
+            const SizedBox(height: 14),
+            const Text(
+              'No materials match your search',
+              style: TextStyle(color: Color(0xFFF4EFE6), fontSize: 18),
+            ),
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: _clearFilters,
+              child: const Text(
+                'Clear filters',
+                style: TextStyle(color: Color(0xFFB6A080)),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final columns = constraints.maxWidth >= 1100
@@ -230,7 +454,7 @@ class _AdminMaterialsPageState extends State<AdminMaterialsPage> {
             : 1;
 
         return GridView.builder(
-          itemCount: _materials.length,
+          itemCount: items.length,
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columns,
             crossAxisSpacing: 18,
@@ -238,7 +462,7 @@ class _AdminMaterialsPageState extends State<AdminMaterialsPage> {
             mainAxisExtent: 230,
           ),
           itemBuilder: (context, index) {
-            final material = _materials[index];
+            final material = items[index];
             return _buildMaterialCard(material);
           },
         );
