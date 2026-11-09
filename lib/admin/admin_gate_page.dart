@@ -50,10 +50,17 @@ class _AdminGatePageState extends State<AdminGatePage> {
   @override
   void initState() {
     super.initState();
+    _subscription = _supabase.auth.onAuthStateChange.listen((authState) {
+      final event = authState.event;
 
-    _subscription = _supabase.auth.onAuthStateChange.listen((_) {
-      if (_state == _GateState.enroll) return;
-      _evaluate();
+      debugPrint('Admin auth event: $event');
+
+      if (event == AuthChangeEvent.signedOut ||
+          event == AuthChangeEvent.signedIn ||
+          event == AuthChangeEvent.tokenRefreshed ||
+          event == AuthChangeEvent.mfaChallengeVerified) {
+        _evaluate();
+      }
     });
     _evaluate();
   }
@@ -110,29 +117,50 @@ class _AdminGatePageState extends State<AdminGatePage> {
   }
 
   Future<_GateState> _computeState() async {
-    final session = _supabase.auth.currentSession;
-
-    if (session == null) return _GateState.login;
+    if (_supabase.auth.currentSession == null) {
+      return _GateState.login;
+    }
 
     try {
       final isAdmin = await _supabase.rpc('is_admin_account');
 
-      if (isAdmin != true) return _GateState.notAdmin;
+      if (isAdmin != true) {
+        return _GateState.notAdmin;
+      }
 
       final factors = await _supabase.auth.mfa.listFactors();
+
       final verified = factors.totp
           .where((f) => _isVerified(f.status))
           .toList();
 
-      if (verified.isEmpty) return _GateState.enroll;
+      if (verified.isEmpty) {
+        _factorId = null;
+        return _GateState.enroll;
+      }
 
       _factorId = verified.first.id;
 
-      return _jwtAal(session.accessToken) == 'aal2'
-          ? _GateState.ready
-          : _GateState.verify;
-    } catch (e) {
+      // Read the latest session AFTER all asynchronous operations.
+      final latestSession = _supabase.auth.currentSession;
+
+      if (latestSession == null) {
+        return _GateState.login;
+      }
+
+      final aal = _jwtAal(latestSession.accessToken);
+
+      debugPrint('Admin current AAL: $aal');
+
+      if (aal == 'aal2') {
+        return _GateState.ready;
+      }
+
+      return _GateState.verify;
+    } catch (e, stack) {
       debugPrint('Admin gate error: $e');
+      debugPrintStack(stackTrace: stack);
+
       return _GateState.error;
     }
   }
