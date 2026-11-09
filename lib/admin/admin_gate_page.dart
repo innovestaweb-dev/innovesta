@@ -47,16 +47,41 @@ class _AdminGatePageState extends State<AdminGatePage> {
   bool _evaluating = false;
   bool _runAgain = false;
 
+  /// True only while the user pressed "Sign out" himself. Used to tell a
+  /// real sign out apart from the session being dropped unexpectedly.
+  bool _manualSignOut = false;
+
   @override
   void initState() {
     super.initState();
     _subscription = _supabase.auth.onAuthStateChange.listen((authState) {
       final event = authState.event;
 
-      debugPrint('Admin auth event: $event');
+      debugPrint(
+        'Admin auth event: $event | hasSession: ${authState.session != null}',
+      );
 
-      if (event == AuthChangeEvent.signedOut ||
-          event == AuthChangeEvent.signedIn ||
+      if (event == AuthChangeEvent.signedOut) {
+        if (!_manualSignOut) {
+          debugPrint(
+            'WARNING: signedOut fired but the Sign out button was not used. '
+            'The session was dropped (refresh failed or Supabase session '
+            'settings). Check Authentication > Sessions in Supabase.',
+          );
+        }
+        _manualSignOut = false;
+        _evaluate();
+        return;
+      }
+
+      // While the dashboard is open, a silent token refresh does not change
+      // anything (the aal2 level is kept), so don't re-run the whole check.
+      if (event == AuthChangeEvent.tokenRefreshed &&
+          _state == _GateState.ready) {
+        return;
+      }
+
+      if (event == AuthChangeEvent.signedIn ||
           event == AuthChangeEvent.tokenRefreshed ||
           event == AuthChangeEvent.mfaChallengeVerified) {
         _evaluate();
@@ -116,8 +141,24 @@ class _AdminGatePageState extends State<AdminGatePage> {
     }
   }
 
+  /// The session can be null for a split second while the token is being
+  /// refreshed (right after the code is verified). Wait a little before
+  /// deciding the user is really signed out.
+  Future<Session?> _sessionWithGrace() async {
+    var session = _supabase.auth.currentSession;
+    if (session != null) return session;
+
+    for (var i = 0; i < 2; i++) {
+      await Future.delayed(const Duration(milliseconds: 400));
+      session = _supabase.auth.currentSession;
+      if (session != null) return session;
+    }
+
+    return null;
+  }
+
   Future<_GateState> _computeState() async {
-    if (_supabase.auth.currentSession == null) {
+    if (await _sessionWithGrace() == null) {
       return _GateState.login;
     }
 
@@ -142,7 +183,7 @@ class _AdminGatePageState extends State<AdminGatePage> {
       _factorId = verified.first.id;
 
       // Read the latest session AFTER all asynchronous operations.
-      final latestSession = _supabase.auth.currentSession;
+      final latestSession = await _sessionWithGrace();
 
       if (latestSession == null) {
         return _GateState.login;
@@ -166,10 +207,13 @@ class _AdminGatePageState extends State<AdminGatePage> {
   }
 
   Future<void> _signOut() async {
+    _manualSignOut = true;
+
     try {
       await _supabase.auth.signOut();
     } catch (e) {
       debugPrint('Sign out error: $e');
+      _manualSignOut = false;
     }
   }
 
@@ -499,6 +543,7 @@ class _MfaEnrollViewState extends State<_MfaEnrollView> {
   String? _secret;
   String? _error;
   String? _qrUri;
+
   @override
   void initState() {
     super.initState();
