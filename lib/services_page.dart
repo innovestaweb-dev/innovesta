@@ -331,6 +331,10 @@ class ServicesPage extends StatelessWidget {
               ),
             ),
           ),
+          // Subtle dark overlay keeps the hero image visually balanced.
+          Positioned.fill(
+            child: ColoredBox(color: Colors.black.withValues(alpha: 0.12)),
+          ),
           Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
@@ -1304,29 +1308,36 @@ class ServicesPage extends StatelessWidget {
     return SizedBox(
       width: double.infinity,
       height: height,
-      child: ColoredBox(
-        color: _placeholder,
-        child: isNetwork
-            ? Image.network(
-                source,
-                width: double.infinity,
-                height: height,
-                fit: BoxFit.cover,
-                alignment: alignment,
-                semanticLabel: alt,
-                frameBuilder: frameBuilder,
-                errorBuilder: errorBuilder,
-              )
-            : Image.asset(
-                source,
-                width: double.infinity,
-                height: height,
-                fit: BoxFit.cover,
-                alignment: alignment,
-                semanticLabel: alt,
-                frameBuilder: frameBuilder,
-                errorBuilder: errorBuilder,
-              ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ColoredBox(
+            color: _placeholder,
+            child: isNetwork
+                ? Image.network(
+                    source,
+                    width: double.infinity,
+                    height: height,
+                    fit: BoxFit.cover,
+                    alignment: alignment,
+                    semanticLabel: alt,
+                    frameBuilder: frameBuilder,
+                    errorBuilder: errorBuilder,
+                  )
+                : Image.asset(
+                    source,
+                    width: double.infinity,
+                    height: height,
+                    fit: BoxFit.cover,
+                    alignment: alignment,
+                    semanticLabel: alt,
+                    frameBuilder: frameBuilder,
+                    errorBuilder: errorBuilder,
+                  ),
+          ),
+          // A gentle veil adds depth without noticeably hiding image details.
+          const IgnorePointer(child: ColoredBox(color: Color(0x1F000000))),
+        ],
       ),
     );
   }
