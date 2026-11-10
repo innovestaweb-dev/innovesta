@@ -12,6 +12,46 @@ const Color portfolioBronze = Color(0xFFB6A080);
 const Color portfolioMuted = Color(0xFFAAA69F);
 const Color portfolioBorder = Color(0xFF393733);
 
+String _t(String english, String arabic) => AppLanguage.text(english, arabic);
+
+// Letter spacing breaks Arabic letter joining, so it is disabled for Arabic.
+double _ls(double value) => AppLanguage.isArabic ? 0 : value;
+
+TextDirection get _direction =>
+    AppLanguage.isArabic ? TextDirection.rtl : TextDirection.ltr;
+
+// Network image with a loading spinner and an icon fallback.
+Widget _portfolioImage(
+  String url, {
+  BoxFit fit = BoxFit.cover,
+  IconData placeholderIcon = Icons.architecture,
+}) {
+  Widget placeholder() => Container(
+    color: portfolioSurface,
+    child: Center(
+      child: Icon(placeholderIcon, color: portfolioBronze, size: 42),
+    ),
+  );
+
+  return Image.network(
+    url,
+    fit: fit,
+    loadingBuilder: (context, child, progress) {
+      if (progress == null) return child;
+
+      return Container(
+        color: portfolioSurface,
+        alignment: Alignment.center,
+        child: const CircularProgressIndicator(
+          color: portfolioBronze,
+          strokeWidth: 2,
+        ),
+      );
+    },
+    errorBuilder: (_, _, _) => placeholder(),
+  );
+}
+
 // -----------------------------------------------------------------------------
 // Portfolio Page
 // -----------------------------------------------------------------------------
@@ -37,8 +77,9 @@ class _PortfolioPageState extends State<PortfolioPage> {
   }
 
   Future<void> _loadProjects() async {
+    // Keep the existing list on screen while refreshing.
     setState(() {
-      _isLoading = true;
+      _isLoading = _projects.isEmpty;
       _error = null;
     });
 
@@ -54,143 +95,149 @@ class _PortfolioPageState extends State<PortfolioPage> {
     } catch (e) {
       if (!mounted) return;
 
-      setState(() {
-        _error = e.toString();
-        _isLoading = false;
-      });
-    }
-  }
+      final hadProjects = _projects.isNotEmpty;
 
-  String _text(String english, String arabic) {
-    return AppLanguage.text(english, arabic);
+      setState(() {
+        _isLoading = false;
+        // With cached projects, keep showing them and just notify the user.
+        _error = hadProjects ? null : e.toString();
+      });
+
+      if (hadProjects) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _t('Unable to refresh projects.', 'تعذر تحديث المشاريع.'),
+            ),
+          ),
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isArabic = AppLanguage.isArabic;
-
-    return Scaffold(
-      backgroundColor: portfolioBackground,
-      appBar: AppBar(
+    return Directionality(
+      textDirection: _direction,
+      child: Scaffold(
         backgroundColor: portfolioBackground,
-        foregroundColor: portfolioIvory,
-        elevation: 0,
-        title: const Text(
-          'INNOVISTA',
-          style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.bold),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              _text('BACK HOME', 'العودة للرئيسية'),
-              style: const TextStyle(
-                color: portfolioBronze,
-                fontSize: 11,
-                letterSpacing: 1,
+        appBar: AppBar(
+          backgroundColor: portfolioBackground,
+          foregroundColor: portfolioIvory,
+          elevation: 0,
+          title: const Text(
+            'INNOVISTA',
+            style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.bold),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                _t('BACK HOME', 'العودة للرئيسية'),
+                style: TextStyle(
+                  color: portfolioBronze,
+                  fontSize: 11,
+                  letterSpacing: _ls(1),
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 16),
-        ],
-      ),
-      body: RefreshIndicator(
-        color: portfolioBronze,
-        backgroundColor: portfolioSurface,
-        onRefresh: _loadProjects,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 60),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1250),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _sectionLabel(
-                      _text('01 / SELECTED WORK', '01 / أعمال مختارة'),
-                    ),
-                    const SizedBox(height: 18),
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        return Text(
-                          _text(
-                            'Spaces Worth Experiencing.',
-                            'مساحات تستحق التجربة.',
-                          ),
-                          textAlign: isArabic
-                              ? TextAlign.right
-                              : TextAlign.left,
-                          style: TextStyle(
-                            color: portfolioIvory,
-                            fontSize: constraints.maxWidth < 600 ? 32 : 46,
-                            fontWeight: FontWeight.w300,
-                            height: 1.3,
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _text(
-                        'A selection of architectural concepts, interior '
-                            'spaces, and immersive environments.',
-                        'مجموعة مختارة من المشاريع المعمارية والتصميمات '
-                            'الداخلية والتجارب التفاعلية.',
+            const SizedBox(width: 16),
+          ],
+        ),
+        body: RefreshIndicator(
+          color: portfolioBronze,
+          backgroundColor: portfolioSurface,
+          onRefresh: _loadProjects,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 60),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1250),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _sectionLabel(
+                        _t('01 / SELECTED WORK', '01 / أعمال مختارة'),
                       ),
-                      textAlign: isArabic ? TextAlign.right : TextAlign.left,
-                      style: const TextStyle(
-                        color: portfolioMuted,
-                        fontSize: 13,
-                        height: 1.8,
+                      const SizedBox(height: 18),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          return Text(
+                            _t(
+                              'Spaces Worth Experiencing.',
+                              'مساحات تستحق التجربة.',
+                            ),
+                            style: TextStyle(
+                              color: portfolioIvory,
+                              fontSize: constraints.maxWidth < 600 ? 32 : 46,
+                              fontWeight: FontWeight.w300,
+                              height: 1.3,
+                            ),
+                          );
+                        },
                       ),
-                    ),
-                    const SizedBox(height: 42),
-                    _buildProjectsContent(),
-                    const SizedBox(height: 60),
-                    const Divider(color: portfolioBorder),
-                    const SizedBox(height: 24),
-                    Text(
-                      _text(
-                        'Have a project in mind?',
-                        'هل لديك مشروع ترغب في تنفيذه؟',
-                      ),
-                      style: const TextStyle(
-                        color: portfolioIvory,
-                        fontSize: 25,
-                        fontWeight: FontWeight.w300,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      _text(
-                        'Contact us to discuss your next project.',
-                        'تواصل معنا لمناقشة مشروعك القادم.',
-                      ),
-                      style: const TextStyle(
-                        color: portfolioMuted,
-                        fontSize: 13,
-                        height: 1.8,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: portfolioBronze,
-                        side: const BorderSide(color: portfolioBronze),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 24,
-                          vertical: 20,
+                      const SizedBox(height: 16),
+                      Text(
+                        _t(
+                          'A selection of architectural concepts, interior '
+                              'spaces, and immersive environments.',
+                          'مجموعة مختارة من المشاريع المعمارية والتصميمات '
+                              'الداخلية والتجارب التفاعلية.',
                         ),
-                        shape: const RoundedRectangleBorder(
-                          borderRadius: BorderRadius.zero,
+                        style: const TextStyle(
+                          color: portfolioMuted,
+                          fontSize: 13,
+                          height: 1.8,
                         ),
                       ),
-                      child: Text(_text('BACK TO HOME', 'العودة للرئيسية')),
-                    ),
-                  ],
+                      const SizedBox(height: 42),
+                      _buildProjectsContent(),
+                      const SizedBox(height: 60),
+                      const Divider(color: portfolioBorder),
+                      const SizedBox(height: 24),
+                      Text(
+                        _t(
+                          'Have a project in mind?',
+                          'هل لديك مشروع ترغب في تنفيذه؟',
+                        ),
+                        style: const TextStyle(
+                          color: portfolioIvory,
+                          fontSize: 25,
+                          fontWeight: FontWeight.w300,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        _t(
+                          'Contact us to discuss your next project.',
+                          'تواصل معنا لمناقشة مشروعك القادم.',
+                        ),
+                        style: const TextStyle(
+                          color: portfolioMuted,
+                          fontSize: 13,
+                          height: 1.8,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: portfolioBronze,
+                          side: const BorderSide(color: portfolioBronze),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 20,
+                          ),
+                          shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.zero,
+                          ),
+                        ),
+                        child: Text(_t('BACK TO HOME', 'العودة للرئيسية')),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -228,13 +275,10 @@ class _PortfolioPageState extends State<PortfolioPage> {
           spacing: 28,
           runSpacing: 42,
           children: _projects.asMap().entries.map((entry) {
-            final index = entry.key;
-            final project = entry.value;
-
             return _ProjectCard(
               width: cardWidth,
-              project: project,
-              number: (index + 1).toString().padLeft(2, '0'),
+              project: entry.value,
+              number: (entry.key + 1).toString().padLeft(2, '0'),
             );
           }).toList(),
         );
@@ -259,12 +303,12 @@ class _PortfolioPageState extends State<PortfolioPage> {
           ),
           const SizedBox(height: 18),
           Text(
-            _text('Unable to load projects', 'تعذر تحميل المشاريع'),
+            _t('Unable to load projects', 'تعذر تحميل المشاريع'),
             style: const TextStyle(color: portfolioIvory, fontSize: 17),
           ),
           const SizedBox(height: 10),
           Text(
-            _text(
+            _t(
               'Please check your connection and try again.',
               'يرجى التحقق من الاتصال بالإنترنت والمحاولة مرة أخرى.',
             ),
@@ -279,7 +323,7 @@ class _PortfolioPageState extends State<PortfolioPage> {
           OutlinedButton.icon(
             onPressed: _loadProjects,
             icon: const Icon(Icons.refresh, size: 16),
-            label: Text(_text('TRY AGAIN', 'إعادة المحاولة')),
+            label: Text(_t('TRY AGAIN', 'إعادة المحاولة')),
             style: OutlinedButton.styleFrom(
               foregroundColor: portfolioBronze,
               side: const BorderSide(color: portfolioBronze),
@@ -307,7 +351,7 @@ class _PortfolioPageState extends State<PortfolioPage> {
           ),
           const SizedBox(height: 20),
           Text(
-            _text('Projects Coming Soon', 'المشاريع قريباً'),
+            _t('Projects Coming Soon', 'المشاريع قريباً'),
             style: const TextStyle(
               color: portfolioIvory,
               fontSize: 21,
@@ -316,7 +360,7 @@ class _PortfolioPageState extends State<PortfolioPage> {
           ),
           const SizedBox(height: 12),
           Text(
-            _text(
+            _t(
               'Our selected architectural visualization projects '
                   'will be showcased here.',
               'سيتم عرض مجموعة مشاريعنا المختارة في التصور المعماري هنا.',
@@ -336,10 +380,10 @@ class _PortfolioPageState extends State<PortfolioPage> {
   Widget _sectionLabel(String text) {
     return Text(
       text,
-      style: const TextStyle(
+      style: TextStyle(
         color: portfolioBronze,
         fontSize: 10,
-        letterSpacing: 2.2,
+        letterSpacing: _ls(2.2),
       ),
     );
   }
@@ -365,6 +409,7 @@ class _ProjectCard extends StatelessWidget {
     final category = project.category?.trim() ?? '';
     final location = project.location?.trim() ?? '';
     final area = project.area?.trim() ?? '';
+    final coverImage = project.coverImage?.trim() ?? '';
 
     final details = [
       if (location.isNotEmpty) location,
@@ -390,30 +435,13 @@ class _ProjectCard extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (project.coverImage != null &&
-                      project.coverImage!.trim().isNotEmpty)
-                    Image.network(
-                      project.coverImage!,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (context, child, progress) {
-                        if (progress == null) return child;
-
-                        return Container(
-                          color: portfolioSurface,
-                          alignment: Alignment.center,
-                          child: const CircularProgressIndicator(
-                            color: portfolioBronze,
-                            strokeWidth: 2,
-                          ),
-                        );
-                      },
-                      errorBuilder: (_, _, _) => _imagePlaceholder(),
-                    )
+                  if (coverImage.isNotEmpty)
+                    _portfolioImage(coverImage)
                   else
                     _imagePlaceholder(),
-                  Positioned(
+                  PositionedDirectional(
                     top: 16,
-                    left: 16,
+                    start: 16,
                     child: Container(
                       padding: const EdgeInsets.all(10),
                       color: portfolioBackground.withValues(alpha: 0.85),
@@ -426,8 +454,8 @@ class _ProjectCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Positioned(
-                    right: 16,
+                  PositionedDirectional(
+                    end: 16,
                     bottom: 16,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
@@ -436,11 +464,11 @@ class _ProjectCard extends StatelessWidget {
                       ),
                       color: portfolioBackground.withValues(alpha: 0.85),
                       child: Text(
-                        AppLanguage.text('VIEW PROJECT', 'عرض المشروع'),
-                        style: const TextStyle(
+                        _t('VIEW PROJECT', 'عرض المشروع'),
+                        style: TextStyle(
                           color: portfolioIvory,
                           fontSize: 9,
-                          letterSpacing: 1.2,
+                          letterSpacing: _ls(1.2),
                         ),
                       ),
                     ),
@@ -452,10 +480,10 @@ class _ProjectCard extends StatelessWidget {
             if (category.isNotEmpty) ...[
               Text(
                 category.toUpperCase(),
-                style: const TextStyle(
+                style: TextStyle(
                   color: portfolioBronze,
                   fontSize: 9,
-                  letterSpacing: 1.8,
+                  letterSpacing: _ls(1.8),
                 ),
               ),
               const SizedBox(height: 10),
@@ -505,14 +533,9 @@ class ProjectDetailsPage extends StatelessWidget {
 
   const ProjectDetailsPage({super.key, required this.project});
 
-  String _text(String english, String arabic) {
-    return AppLanguage.text(english, arabic);
-  }
-
   String _value(dynamic value) {
     if (value == null) return '';
     if (value is List) return value.join(', ');
-    if (value is Map) return value.toString();
     return value.toString();
   }
 
@@ -528,6 +551,11 @@ class ProjectDetailsPage extends StatelessWidget {
         .toList();
   }
 
+  void _showMessage(BuildContext context, String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _openVideo(BuildContext context) async {
     final rawUrl = project.videoUrl?.trim() ?? '';
 
@@ -536,11 +564,7 @@ class ProjectDetailsPage extends StatelessWidget {
     final uri = Uri.tryParse(rawUrl);
 
     if (uri == null || (uri.scheme != 'https' && uri.scheme != 'http')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_text('Invalid video URL.', 'رابط الفيديو غير صالح.')),
-        ),
-      );
+      _showMessage(context, _t('Invalid video URL.', 'رابط الفيديو غير صالح.'));
       return;
     }
 
@@ -551,33 +575,36 @@ class ProjectDetailsPage extends StatelessWidget {
       );
 
       if (!launched && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _text('Unable to open the video.', 'تعذر فتح الفيديو.'),
-            ),
-          ),
+        _showMessage(
+          context,
+          _t('Unable to open the video.', 'تعذر فتح الفيديو.'),
         );
       }
     } catch (_) {
       if (!context.mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _text('Unable to open the video.', 'تعذر فتح الفيديو.'),
-          ),
-        ),
+      _showMessage(
+        context,
+        _t('Unable to open the video.', 'تعذر فتح الفيديو.'),
       );
     }
   }
 
+  void _openGallery(BuildContext context, List<String> images, int index) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => _GalleryViewer(images: images, initialIndex: index),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isArabic = AppLanguage.isArabic;
-
     final gallery = project.gallery
-        .where((url) => url.trim().isNotEmpty)
+        .map((url) => url.trim())
+        .where((url) => url.isNotEmpty)
         .toList();
 
     final specifications = _visibleSpecifications();
@@ -589,223 +616,220 @@ class ProjectDetailsPage extends StatelessWidget {
     final coverImage = project.coverImage?.trim() ?? '';
     final videoUrl = project.videoUrl?.trim() ?? '';
 
-    return Scaffold(
-      backgroundColor: portfolioBackground,
-      appBar: AppBar(
+    return Directionality(
+      textDirection: _direction,
+      child: Scaffold(
         backgroundColor: portfolioBackground,
-        foregroundColor: portfolioIvory,
-        elevation: 0,
-        title: const Text(
-          'INNOVISTA',
-          style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.bold),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              _text('BACK TO PORTFOLIO', 'العودة للأعمال'),
-              style: const TextStyle(
-                color: portfolioBronze,
-                fontSize: 10,
-                letterSpacing: 1,
+        appBar: AppBar(
+          backgroundColor: portfolioBackground,
+          foregroundColor: portfolioIvory,
+          elevation: 0,
+          title: const Text(
+            'INNOVISTA',
+            style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.bold),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                _t('BACK TO PORTFOLIO', 'العودة للأعمال'),
+                style: TextStyle(
+                  color: portfolioBronze,
+                  fontSize: 10,
+                  letterSpacing: _ls(1),
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-        ],
-      ),
-      body: SingleChildScrollView(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1250),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 45),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _text('PROJECT DETAILS', 'تفاصيل المشروع'),
-                    style: const TextStyle(
-                      color: portfolioBronze,
-                      fontSize: 10,
-                      letterSpacing: 2.2,
-                    ),
-                  ),
-
-                  const SizedBox(height: 18),
-
-                  Text(
-                    project.title,
-                    textAlign: isArabic ? TextAlign.right : TextAlign.left,
-                    style: const TextStyle(
-                      color: portfolioIvory,
-                      fontSize: 36,
-                      fontWeight: FontWeight.w300,
-                      height: 1.3,
-                    ),
-                  ),
-
-                  if (category.isNotEmpty) ...[
-                    const SizedBox(height: 12),
+            const SizedBox(width: 12),
+          ],
+        ),
+        body: SingleChildScrollView(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1250),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 45,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      category.toUpperCase(),
-                      style: const TextStyle(
+                      _t('PROJECT DETAILS', 'تفاصيل المشروع'),
+                      style: TextStyle(
                         color: portfolioBronze,
                         fontSize: 10,
-                        letterSpacing: 1.8,
+                        letterSpacing: _ls(2.2),
                       ),
                     ),
-                  ],
 
-                  const SizedBox(height: 30),
+                    const SizedBox(height: 18),
 
-                  if (coverImage.isNotEmpty)
+                    Text(
+                      project.title,
+                      style: const TextStyle(
+                        color: portfolioIvory,
+                        fontSize: 36,
+                        fontWeight: FontWeight.w300,
+                        height: 1.3,
+                      ),
+                    ),
+
+                    if (category.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        category.toUpperCase(),
+                        style: TextStyle(
+                          color: portfolioBronze,
+                          fontSize: 10,
+                          letterSpacing: _ls(1.8),
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 30),
+
                     ClipRRect(
                       borderRadius: BorderRadius.circular(2),
                       child: AspectRatio(
                         aspectRatio: 16 / 9,
-                        child: Image.network(
-                          coverImage,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => _detailImagePlaceholder(),
+                        child: coverImage.isNotEmpty
+                            ? _portfolioImage(
+                                coverImage,
+                                placeholderIcon: Icons.image_outlined,
+                              )
+                            : _detailImagePlaceholder(),
+                      ),
+                    ),
+
+                    const SizedBox(height: 38),
+
+                    if (location.isNotEmpty || area.isNotEmpty)
+                      _buildProjectOverview(location: location, area: area),
+
+                    if (description.isNotEmpty) ...[
+                      const SizedBox(height: 38),
+                      _sectionHeading(_t('ABOUT THE PROJECT', 'عن المشروع')),
+                      const SizedBox(height: 18),
+                      Text(
+                        description,
+                        style: const TextStyle(
+                          color: portfolioMuted,
+                          fontSize: 14,
+                          height: 2,
                         ),
                       ),
-                    )
-                  else
-                    AspectRatio(
-                      aspectRatio: 16 / 9,
-                      child: _detailImagePlaceholder(),
-                    ),
+                    ],
 
-                  const SizedBox(height: 38),
-
-                  if (location.isNotEmpty || area.isNotEmpty)
-                    _buildProjectOverview(location: location, area: area),
-
-                  if (description.isNotEmpty) ...[
-                    const SizedBox(height: 38),
-                    _sectionHeading(_text('ABOUT THE PROJECT', 'عن المشروع')),
-                    const SizedBox(height: 18),
-                    Text(
-                      description,
-                      textAlign: isArabic ? TextAlign.right : TextAlign.left,
-                      style: const TextStyle(
-                        color: portfolioMuted,
-                        fontSize: 14,
-                        height: 2,
+                    if (specifications.isNotEmpty) ...[
+                      const SizedBox(height: 45),
+                      _sectionHeading(
+                        _t('PROJECT INFORMATION', 'معلومات المشروع'),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 20),
+                      _buildSpecifications(specifications),
+                    ],
 
-                  if (specifications.isNotEmpty) ...[
-                    const SizedBox(height: 45),
-                    _sectionHeading(
-                      _text('PROJECT INFORMATION', 'معلومات المشروع'),
-                    ),
-                    const SizedBox(height: 20),
-                    _buildSpecifications(specifications),
-                  ],
-
-                  if (gallery.isNotEmpty) ...[
-                    const SizedBox(height: 50),
-                    _sectionHeading(
-                      _text('PROJECT GALLERY', 'معرض صور المشروع'),
-                    ),
-                    const SizedBox(height: 22),
-                    _buildGallery(gallery),
-                  ],
-
-                  if (videoUrl.isNotEmpty) ...[
-                    const SizedBox(height: 45),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: portfolioSurface,
-                        border: Border.all(color: portfolioBorder),
+                    if (gallery.isNotEmpty) ...[
+                      const SizedBox(height: 50),
+                      _sectionHeading(
+                        _t('PROJECT GALLERY', 'معرض صور المشروع'),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _text('PROJECT VIDEO', 'فيديو المشروع'),
-                            style: const TextStyle(
-                              color: portfolioBronze,
-                              fontSize: 10,
-                              letterSpacing: 2,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            _text(
-                              'Explore the project in motion.',
-                              'شاهد المشروع من خلال الفيديو.',
-                            ),
-                            style: const TextStyle(
-                              color: portfolioMuted,
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          OutlinedButton.icon(
-                            onPressed: () => _openVideo(context),
-                            icon: const Icon(
-                              Icons.play_circle_outline,
-                              size: 19,
-                            ),
-                            label: Text(_text('WATCH VIDEO', 'مشاهدة الفيديو')),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: portfolioBronze,
-                              side: const BorderSide(color: portfolioBronze),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 22,
-                                vertical: 17,
+                      const SizedBox(height: 22),
+                      _buildGallery(context, gallery),
+                    ],
+
+                    if (videoUrl.isNotEmpty) ...[
+                      const SizedBox(height: 45),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: portfolioSurface,
+                          border: Border.all(color: portfolioBorder),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _t('PROJECT VIDEO', 'فيديو المشروع'),
+                              style: TextStyle(
+                                color: portfolioBronze,
+                                fontSize: 10,
+                                letterSpacing: _ls(2),
                               ),
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 16),
+                            Text(
+                              _t(
+                                'Explore the project in motion.',
+                                'شاهد المشروع من خلال الفيديو.',
+                              ),
+                              style: const TextStyle(
+                                color: portfolioMuted,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            OutlinedButton.icon(
+                              onPressed: () => _openVideo(context),
+                              icon: const Icon(
+                                Icons.play_circle_outline,
+                                size: 19,
+                              ),
+                              label: Text(_t('WATCH VIDEO', 'مشاهدة الفيديو')),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: portfolioBronze,
+                                side: const BorderSide(color: portfolioBronze),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 22,
+                                  vertical: 17,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
+                    ],
+
+                    const SizedBox(height: 55),
+
+                    const Divider(color: portfolioBorder),
+
+                    const SizedBox(height: 25),
+
+                    Text(
+                      _t(
+                        'Have a project in mind?',
+                        'هل لديك مشروع ترغب في تنفيذه؟',
+                      ),
+                      style: const TextStyle(
+                        color: portfolioIvory,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w300,
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: portfolioBronze,
+                        side: const BorderSide(color: portfolioBronze),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 18,
+                        ),
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.zero,
+                        ),
+                      ),
+                      child: Text(_t('BACK TO PORTFOLIO', 'العودة للأعمال')),
                     ),
                   ],
-
-                  const SizedBox(height: 55),
-
-                  const Divider(color: portfolioBorder),
-
-                  const SizedBox(height: 25),
-
-                  Text(
-                    _text(
-                      'Have a project in mind?',
-                      'هل لديك مشروع ترغب في تنفيذه؟',
-                    ),
-                    style: const TextStyle(
-                      color: portfolioIvory,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w300,
-                    ),
-                  ),
-
-                  const SizedBox(height: 18),
-
-                  OutlinedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                    },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: portfolioBronze,
-                      side: const BorderSide(color: portfolioBronze),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 18,
-                      ),
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.zero,
-                      ),
-                    ),
-                    child: Text(_text('BACK TO PORTFOLIO', 'العودة للأعمال')),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -819,8 +843,8 @@ class ProjectDetailsPage extends StatelessWidget {
     required String area,
   }) {
     final items = <MapEntry<String, String>>[
-      if (location.isNotEmpty) MapEntry(_text('LOCATION', 'الموقع'), location),
-      if (area.isNotEmpty) MapEntry(_text('AREA', 'المساحة'), area),
+      if (location.isNotEmpty) MapEntry(_t('LOCATION', 'الموقع'), location),
+      if (area.isNotEmpty) MapEntry(_t('AREA', 'المساحة'), area),
     ];
 
     return Wrap(
@@ -839,10 +863,10 @@ class ProjectDetailsPage extends StatelessWidget {
             children: [
               Text(
                 item.key,
-                style: const TextStyle(
+                style: TextStyle(
                   color: portfolioBronze,
                   fontSize: 9,
-                  letterSpacing: 1.5,
+                  letterSpacing: _ls(1.5),
                 ),
               ),
               const SizedBox(height: 9),
@@ -880,10 +904,10 @@ class ProjectDetailsPage extends StatelessWidget {
                   children: [
                     Text(
                       item.key,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: portfolioBronze,
                         fontSize: 10,
-                        letterSpacing: 1.2,
+                        letterSpacing: _ls(1.2),
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -905,7 +929,7 @@ class ProjectDetailsPage extends StatelessWidget {
     );
   }
 
-  Widget _buildGallery(List<String> gallery) {
+  Widget _buildGallery(BuildContext context, List<String> gallery) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final columns = constraints.maxWidth < 600 ? 1 : 2;
@@ -914,17 +938,22 @@ class ProjectDetailsPage extends StatelessWidget {
         return Wrap(
           spacing: 18,
           runSpacing: 18,
-          children: gallery.map((url) {
+          children: gallery.asMap().entries.map((entry) {
             return SizedBox(
               width: itemWidth,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(2),
-                child: AspectRatio(
-                  aspectRatio: 1.28,
-                  child: Image.network(
-                    url,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => _detailImagePlaceholder(),
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: () => _openGallery(context, gallery, entry.key),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: AspectRatio(
+                      aspectRatio: 1.28,
+                      child: _portfolioImage(
+                        entry.value,
+                        placeholderIcon: Icons.image_outlined,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -938,10 +967,10 @@ class ProjectDetailsPage extends StatelessWidget {
   Widget _sectionHeading(String title) {
     return Text(
       title,
-      style: const TextStyle(
+      style: TextStyle(
         color: portfolioBronze,
         fontSize: 10,
-        letterSpacing: 2,
+        letterSpacing: _ls(2),
         fontWeight: FontWeight.w500,
       ),
     );
@@ -952,6 +981,114 @@ class ProjectDetailsPage extends StatelessWidget {
       color: portfolioSurface,
       child: const Center(
         child: Icon(Icons.image_outlined, color: portfolioBronze, size: 42),
+      ),
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Fullscreen gallery viewer (swipe + pinch to zoom)
+// -----------------------------------------------------------------------------
+
+class _GalleryViewer extends StatefulWidget {
+  final List<String> images;
+  final int initialIndex;
+
+  const _GalleryViewer({required this.images, required this.initialIndex});
+
+  @override
+  State<_GalleryViewer> createState() => _GalleryViewerState();
+}
+
+class _GalleryViewerState extends State<_GalleryViewer> {
+  late final PageController _pageController;
+  late int _index;
+
+  @override
+  void initState() {
+    super.initState();
+    _index = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _go(int delta) {
+    final target = _index + delta;
+    if (target < 0 || target >= widget.images.length) return;
+
+    _pageController.animateToPage(
+      target,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = widget.images.length;
+
+    return Directionality(
+      textDirection: _direction,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          foregroundColor: portfolioIvory,
+          elevation: 0,
+          title: Text(
+            '${_index + 1} / $total',
+            style: const TextStyle(fontSize: 14, color: portfolioMuted),
+          ),
+          actions: [
+            if (total > 1) ...[
+              IconButton(
+                onPressed: _index > 0 ? () => _go(-1) : null,
+                icon: const Icon(Icons.chevron_left),
+              ),
+              IconButton(
+                onPressed: _index < total - 1 ? () => _go(1) : null,
+                icon: const Icon(Icons.chevron_right),
+              ),
+            ],
+          ],
+        ),
+        body: PageView.builder(
+          controller: _pageController,
+          itemCount: total,
+          onPageChanged: (value) => setState(() => _index = value),
+          itemBuilder: (context, i) {
+            return InteractiveViewer(
+              minScale: 1,
+              maxScale: 4,
+              child: Center(
+                child: Image.network(
+                  widget.images[i],
+                  fit: BoxFit.contain,
+                  loadingBuilder: (context, child, progress) {
+                    if (progress == null) return child;
+
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        color: portfolioBronze,
+                        strokeWidth: 2,
+                      ),
+                    );
+                  },
+                  errorBuilder: (_, _, _) => const Icon(
+                    Icons.broken_image_outlined,
+                    color: portfolioMuted,
+                    size: 48,
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }

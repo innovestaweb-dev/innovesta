@@ -10,6 +10,10 @@ const Color _ivory = Color(0xFFF4EFE6);
 const Color _bronze = Color(0xFFB6A080);
 const Color _muted = Color(0xFFAAA69F);
 const Color _border = Color(0xFF393733);
+const Color _danger = Color(0xFFE58C83);
+const Color _success = Color(0xFF83B89A);
+
+enum _ProjectFilter { all, published, drafts }
 
 class AdminProjectsPage extends StatefulWidget {
   const AdminProjectsPage({super.key});
@@ -25,6 +29,11 @@ class _AdminProjectsPageState extends State<AdminProjectsPage> {
   bool _isLoading = true;
   String? _error;
 
+  _ProjectFilter _filter = _ProjectFilter.all;
+
+  // Ids of projects currently being deleted (prevents double taps).
+  final Set<Object> _deletingIds = {};
+
   @override
   void initState() {
     super.initState();
@@ -32,8 +41,9 @@ class _AdminProjectsPageState extends State<AdminProjectsPage> {
   }
 
   Future<void> _loadProjects() async {
+    // Keep the list on screen while refreshing so pull-to-refresh keeps working.
     setState(() {
-      _isLoading = true;
+      _isLoading = _projects.isEmpty;
       _error = null;
     });
 
@@ -49,10 +59,17 @@ class _AdminProjectsPageState extends State<AdminProjectsPage> {
     } catch (e) {
       if (!mounted) return;
 
+      final hadProjects = _projects.isNotEmpty;
+
       setState(() {
-        _error = e.toString();
         _isLoading = false;
+        _error = hadProjects ? null : e.toString();
       });
+
+      if (hadProjects) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Refresh failed: $e')));
+      }
     }
   }
 
@@ -67,8 +84,21 @@ class _AdminProjectsPageState extends State<AdminProjectsPage> {
     }
   }
 
+  Future<void> _openAddProjectPage() async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const AdminProjectFormPage()),
+    );
+
+    if (result == true && mounted) {
+      await _loadProjects();
+    }
+  }
+
   Future<void> _deleteProject(AdminProject project) async {
-    if (project.id == null) return;
+    final id = project.id;
+
+    if (id == null || _deletingIds.contains(id)) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -86,104 +116,66 @@ class _AdminProjectsPageState extends State<AdminProjectsPage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: Color(0xFFE58C83)),
-            ),
+            child: const Text('Delete', style: TextStyle(color: _danger)),
           ),
         ],
       ),
     );
 
-    if (confirmed != true) return;
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deletingIds.add(id));
 
     try {
-      await _projectService.deleteProject(project.id!);
+      await _projectService.deleteProject(id);
 
       if (!mounted) return;
+
+      // Remove locally instead of reloading the whole list.
+      setState(() {
+        _deletingIds.remove(id);
+        _projects = _projects.where((p) => p.id != id).toList();
+      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Project deleted successfully.')),
       );
-
-      await _loadProjects();
     } catch (e) {
       if (!mounted) return;
+
+      setState(() => _deletingIds.remove(id));
 
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('Delete failed: $e')));
     }
   }
 
-  Future<void> _openAddProjectPage() async {
-    final result = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(builder: (_) => const AdminProjectFormPage()),
-    );
-
-    if (result == true && mounted) {
-      await _loadProjects();
+  List<AdminProject> get _visibleProjects {
+    switch (_filter) {
+      case _ProjectFilter.published:
+        return _projects.where((p) => p.isPublished).toList();
+      case _ProjectFilter.drafts:
+        return _projects.where((p) => !p.isPublished).toList();
+      case _ProjectFilter.all:
+        return _projects;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isNarrow = MediaQuery.of(context).size.width < 600;
+
+    final publishedCount = _projects.where((p) => p.isPublished).length;
+    final draftCount = _projects.length - publishedCount;
+
     return Container(
       color: _background,
       child: Padding(
-        padding: const EdgeInsets.all(30),
+        padding: EdgeInsets.all(isNarrow ? 16 : 30),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Projects',
-                        style: TextStyle(
-                          color: _ivory,
-                          fontSize: 26,
-                          fontWeight: FontWeight.w300,
-                        ),
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        'Manage your architectural visualization projects.',
-                        style: TextStyle(color: _muted, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-
-                ElevatedButton.icon(
-                  onPressed: _openAddProjectPage,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add Project'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _bronze,
-                    foregroundColor: _background,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 15,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(width: 10),
-
-                IconButton(
-                  onPressed: _isLoading ? null : _loadProjects,
-                  icon: const Icon(Icons.refresh, color: _bronze),
-                  tooltip: 'Refresh projects',
-                ),
-              ],
-            ),
+            _header(),
             const SizedBox(height: 25),
 
             Row(
@@ -191,22 +183,23 @@ class _AdminProjectsPageState extends State<AdminProjectsPage> {
                 _StatCard(
                   title: 'Total Projects',
                   value: _projects.length.toString(),
+                  selected: _filter == _ProjectFilter.all,
+                  onTap: () => setState(() => _filter = _ProjectFilter.all),
                 ),
                 const SizedBox(width: 12),
                 _StatCard(
                   title: 'Published',
-                  value: _projects
-                      .where((project) => project.isPublished)
-                      .length
-                      .toString(),
+                  value: publishedCount.toString(),
+                  selected: _filter == _ProjectFilter.published,
+                  onTap: () =>
+                      setState(() => _filter = _ProjectFilter.published),
                 ),
                 const SizedBox(width: 12),
                 _StatCard(
                   title: 'Drafts',
-                  value: _projects
-                      .where((project) => !project.isPublished)
-                      .length
-                      .toString(),
+                  value: draftCount.toString(),
+                  selected: _filter == _ProjectFilter.drafts,
+                  onTap: () => setState(() => _filter = _ProjectFilter.drafts),
                 ),
               ],
             ),
@@ -220,6 +213,75 @@ class _AdminProjectsPageState extends State<AdminProjectsPage> {
     );
   }
 
+  Widget _header() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 620;
+
+        const titleBlock = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Projects',
+              style: TextStyle(
+                color: _ivory,
+                fontSize: 26,
+                fontWeight: FontWeight.w300,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Manage your architectural visualization projects.',
+              style: TextStyle(color: _muted, fontSize: 12),
+            ),
+          ],
+        );
+
+        final actions = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ElevatedButton.icon(
+              onPressed: _openAddProjectPage,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add Project'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _bronze,
+                foregroundColor: _background,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 15,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            IconButton(
+              onPressed: _isLoading ? null : _loadProjects,
+              icon: const Icon(Icons.refresh, color: _bronze),
+              tooltip: 'Refresh projects',
+            ),
+          ],
+        );
+
+        if (narrow) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [titleBlock, const SizedBox(height: 16), actions],
+          );
+        }
+
+        return Row(
+          children: [
+            const Expanded(child: titleBlock),
+            actions,
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildProjectsContent() {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator(color: _bronze));
@@ -230,7 +292,7 @@ class _AdminProjectsPageState extends State<AdminProjectsPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline, color: Color(0xFFE58C83), size: 38),
+            const Icon(Icons.error_outline, color: _danger, size: 38),
             const SizedBox(height: 12),
             const Text(
               'Unable to load projects',
@@ -273,17 +335,44 @@ class _AdminProjectsPageState extends State<AdminProjectsPage> {
       );
     }
 
+    final visible = _visibleProjects;
+
+    if (visible.isEmpty) {
+      return RefreshIndicator(
+        color: _bronze,
+        backgroundColor: _surface,
+        onRefresh: _loadProjects,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(height: 70),
+            Center(
+              child: Text(
+                'No projects in this filter.',
+                style: TextStyle(color: _muted, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return RefreshIndicator(
       color: _bronze,
       backgroundColor: _surface,
       onRefresh: _loadProjects,
       child: ListView.separated(
-        itemCount: _projects.length,
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: visible.length,
         separatorBuilder: (_, _) => const SizedBox(height: 12),
         itemBuilder: (context, index) {
-          final project = _projects[index];
+          final project = visible[index];
+          final busy =
+              project.id != null && _deletingIds.contains(project.id as Object);
+
           return _ProjectCard(
             project: project,
+            busy: busy,
             onDelete: () => _deleteProject(project),
             onEdit: () => _openEditProjectPage(project),
           );
@@ -296,25 +385,48 @@ class _AdminProjectsPageState extends State<AdminProjectsPage> {
 class _StatCard extends StatelessWidget {
   final String title;
   final String value;
+  final bool selected;
+  final VoidCallback onTap;
 
-  const _StatCard({required this.title, required this.value});
+  const _StatCard({
+    required this.title,
+    required this.value,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: _surface,
-          border: Border.all(color: _border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: const TextStyle(color: _muted, fontSize: 11)),
-            const SizedBox(height: 10),
-            Text(value, style: const TextStyle(color: _bronze, fontSize: 23)),
-          ],
+      child: Material(
+        color: _surface,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: selected ? _bronze : _border,
+                width: selected ? 1.5 : 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _muted, fontSize: 11),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  value,
+                  style: const TextStyle(color: _bronze, fontSize: 23),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -323,88 +435,135 @@ class _StatCard extends StatelessWidget {
 
 class _ProjectCard extends StatelessWidget {
   final AdminProject project;
+  final bool busy;
   final VoidCallback onDelete;
   final VoidCallback onEdit;
 
   const _ProjectCard({
     required this.project,
+    required this.busy,
     required this.onDelete,
     required this.onEdit,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: _surface,
-        border: Border.all(color: _border),
-      ),
-      child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: SizedBox(
-              width: 105,
-              height: 85,
-              child:
-                  project.coverImage != null && project.coverImage!.isNotEmpty
-                  ? Image.network(
-                      project.coverImage!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => _imagePlaceholder(),
-                    )
-                  : _imagePlaceholder(),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  project.title,
-                  style: const TextStyle(
-                    color: _ivory,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
+    final coverImage = project.coverImage?.trim() ?? '';
+    final hasVideo = (project.videoUrl?.trim() ?? '').isNotEmpty;
+
+    final details = [
+      if (project.category?.trim().isNotEmpty == true) project.category!.trim(),
+      if (project.location?.trim().isNotEmpty == true) project.location!.trim(),
+      if (project.area?.trim().isNotEmpty == true) project.area!.trim(),
+    ].join(' • ');
+
+    return Material(
+      color: _surface,
+      child: InkWell(
+        onTap: busy ? null : onEdit,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(border: Border.all(color: _border)),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: SizedBox(
+                  width: 105,
+                  height: 85,
+                  child: coverImage.isNotEmpty
+                      ? Image.network(
+                          coverImage,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => _imagePlaceholder(),
+                        )
+                      : _imagePlaceholder(),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      project.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: _ivory,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    if (details.isNotEmpty) ...[
+                      const SizedBox(height: 7),
+                      Text(
+                        details,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: _muted, fontSize: 11),
+                      ),
+                    ],
+                    const SizedBox(height: 9),
+                    Row(
+                      children: [
+                        Text(
+                          project.isPublished ? 'PUBLISHED' : 'DRAFT',
+                          style: TextStyle(
+                            color: project.isPublished ? _success : _bronze,
+                            fontSize: 9,
+                            letterSpacing: 1.3,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (hasVideo) ...[
+                          const SizedBox(width: 14),
+                          const Icon(
+                            Icons.videocam_outlined,
+                            color: _muted,
+                            size: 14,
+                          ),
+                          const SizedBox(width: 4),
+                          const Text(
+                            'VIDEO',
+                            style: TextStyle(
+                              color: _muted,
+                              fontSize: 9,
+                              letterSpacing: 1.3,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (busy)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 14),
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      color: _danger,
+                      strokeWidth: 2,
+                    ),
                   ),
+                )
+              else
+                IconButton(
+                  onPressed: onDelete,
+                  tooltip: 'Delete project',
+                  icon: const Icon(Icons.delete_outline, color: _danger),
                 ),
-                const SizedBox(height: 7),
-                Text(
-                  [
-                    if (project.category?.isNotEmpty == true) project.category!,
-                    if (project.location?.isNotEmpty == true) project.location!,
-                    if (project.area?.isNotEmpty == true) project.area!,
-                  ].join(' • '),
-                  style: const TextStyle(color: _muted, fontSize: 11),
-                ),
-                const SizedBox(height: 9),
-                Text(
-                  project.isPublished ? 'PUBLISHED' : 'DRAFT',
-                  style: TextStyle(
-                    color: project.isPublished
-                        ? const Color(0xFF83B89A)
-                        : _bronze,
-                    fontSize: 9,
-                    letterSpacing: 1.3,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
+              IconButton(
+                onPressed: busy ? null : onEdit,
+                tooltip: 'Edit project',
+                icon: const Icon(Icons.edit_outlined, color: _bronze),
+              ),
+            ],
           ),
-          IconButton(
-            onPressed: onDelete,
-            tooltip: 'Delete project',
-            icon: const Icon(Icons.delete_outline, color: Color(0xFFE58C83)),
-          ),
-          IconButton(
-            onPressed: onEdit,
-            tooltip: 'Edit project',
-            icon: const Icon(Icons.edit_outlined, color: _bronze),
-          ),
-        ],
+        ),
       ),
     );
   }

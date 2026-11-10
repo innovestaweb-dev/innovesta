@@ -3,9 +3,21 @@ import 'package:video_player/video_player.dart';
 
 import 'admin/models/admin_project.dart';
 import 'admin/services/project_service.dart';
+import 'app_language.dart';
+
+const Color _bg = Color(0xFF171717);
+const Color _surface = Color(0xFF20201E);
+const Color _ivory = Color(0xFFF4EFE6);
+const Color _bronze = Color(0xFFB6A080);
+const Color _muted = Color(0xFFAAA69F);
 
 // Safely handles nullable text fields from AdminProject.
 String _safeText(String? value) => value?.trim() ?? '';
+
+String _t(String english, String arabic) => AppLanguage.text(english, arabic);
+
+// Letter spacing breaks Arabic letter joining, so it is disabled for Arabic.
+double _ls(double value) => AppLanguage.isArabic ? 0 : value;
 
 class InteractivePage extends StatefulWidget {
   const InteractivePage({super.key});
@@ -15,86 +27,148 @@ class InteractivePage extends StatefulWidget {
 }
 
 class _InteractivePageState extends State<InteractivePage> {
-  static const Color background = Color(0xFF171717);
-  static const Color surface = Color(0xFF20201E);
-  static const Color ivory = Color(0xFFF4EFE6);
-  static const Color bronze = Color(0xFFB6A080);
-  static const Color muted = Color(0xFFAAA69F);
-
-  late Future<List<AdminProject>> _projectsFuture;
+  final ProjectService _projectService = ProjectService();
 
   List<AdminProject> _projects = [];
   AdminProject? _selectedProject;
 
+  bool _isLoading = true;
+  bool _hasError = false;
+
+  // Guards against out-of-order responses when refresh is tapped repeatedly.
+  int _loadId = 0;
+
   final GlobalKey _projectsKey = GlobalKey();
+  final GlobalKey _playerKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
-    _projectsFuture = _loadProjects();
+    _fetchProjects();
   }
 
-  Future<List<AdminProject>> _loadProjects() async {
-    final allProjects = await ProjectService().getPublishedProjects();
+  Future<void> _fetchProjects() async {
+    final requestId = ++_loadId;
 
-    final videoProjects = allProjects.where((project) {
-      return _safeText(project.videoUrl).isNotEmpty;
-    }).toList();
+    try {
+      final allProjects = await _projectService.getPublishedProjects();
 
-    if (mounted) {
+      if (!mounted || requestId != _loadId) return;
+
+      final videoProjects = allProjects
+          .where((project) => _safeText(project.videoUrl).isNotEmpty)
+          .toList();
+
+      // Keep the previously selected project when it still exists.
+      final previousId = _selectedProject?.id;
+      AdminProject? selected;
+
+      if (videoProjects.isNotEmpty) {
+        selected = videoProjects.firstWhere(
+          (project) => previousId != null && project.id == previousId,
+          orElse: () => videoProjects.first,
+        );
+      }
+
       setState(() {
         _projects = videoProjects;
+        _selectedProject = selected;
+        _isLoading = false;
+        _hasError = false;
+      });
+    } catch (_) {
+      if (!mounted || requestId != _loadId) return;
 
-        _selectedProject = videoProjects.isNotEmpty
-            ? videoProjects.first
-            : null;
+      setState(() {
+        _isLoading = false;
+        _hasError = true;
       });
     }
-
-    return videoProjects;
   }
 
   void _refreshProjects() {
     setState(() {
-      _projects = [];
-      _selectedProject = null;
-      _projectsFuture = _loadProjects();
+      _isLoading = true;
+      _hasError = false;
     });
+    _fetchProjects();
+  }
+
+  void _selectProject(AdminProject project) {
+    final alreadySelected =
+        project.id != null && project.id == _selectedProject?.id;
+
+    if (!alreadySelected) {
+      setState(() => _selectedProject = project);
+    }
+
+    // On long pages the player is far above the grid, so bring it into view.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = _playerKey.currentContext;
+      if (target == null || !mounted) return;
+
+      Scrollable.ensureVisible(
+        target,
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeInOut,
+        alignment: 0.05,
+      );
+    });
+  }
+
+  void _scrollToProjects() {
+    final target = _projectsKey.currentContext;
+    if (target == null) return;
+
+    Scrollable.ensureVisible(
+      target,
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeInOut,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: background,
-      appBar: AppBar(
-        backgroundColor: background,
-        foregroundColor: ivory,
-        elevation: 0,
-        title: const Text(
-          'INNOVISTA',
-          style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.bold),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'BACK HOME',
-              style: TextStyle(color: bronze, fontSize: 11, letterSpacing: 1),
-            ),
+    final isArabic = AppLanguage.isArabic;
+
+    return Directionality(
+      textDirection: isArabic ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(
+        backgroundColor: _bg,
+        appBar: AppBar(
+          backgroundColor: _bg,
+          foregroundColor: _ivory,
+          elevation: 0,
+          title: const Text(
+            'INNOVISTA',
+            style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.bold),
           ),
-          const SizedBox(width: 16),
-        ],
-      ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _hero(),
-            _projectsSection(),
-            _experienceDetails(),
-            _callToAction(context),
-            _footer(),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                _t('BACK HOME', 'العودة للرئيسية'),
+                style: TextStyle(
+                  color: _bronze,
+                  fontSize: 11,
+                  letterSpacing: _ls(1),
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
           ],
+        ),
+        body: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _hero(),
+              _projectsSection(),
+              _experienceDetails(),
+              _callToAction(context),
+              _footer(),
+            ],
+          ),
         ),
       ),
     );
@@ -118,12 +192,15 @@ class _InteractivePageState extends State<InteractivePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _label('INTERACTIVE ARCHITECTURE / 01'),
+              _label(_t('INTERACTIVE ARCHITECTURE / 01', 'عمارة تفاعلية / 01')),
               const SizedBox(height: 26),
               Text(
-                'Don’t Just See It.\nExperience It.',
+                _t(
+                  'Don’t Just See It.\nExperience It.',
+                  'لا تكتفِ بالمشاهدة.\nعِش التجربة.',
+                ),
                 style: TextStyle(
-                  color: ivory,
+                  color: _ivory,
                   fontSize: isMobile ? 43 : 76,
                   height: 1.12,
                   fontWeight: FontWeight.w300,
@@ -132,30 +209,29 @@ class _InteractivePageState extends State<InteractivePage> {
               const SizedBox(height: 24),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 650),
-                child: const Text(
-                  'Step beyond traditional architectural renders. '
-                  'Explore spaces, experience lighting, and discover '
-                  'design possibilities through real-time interactive '
-                  'experiences and cinematic architectural walkthroughs.',
-                  style: TextStyle(color: muted, fontSize: 15, height: 1.9),
+                child: Text(
+                  _t(
+                    'Step beyond traditional architectural renders. '
+                        'Explore spaces, experience lighting, and discover '
+                        'design possibilities through real-time interactive '
+                        'experiences and cinematic architectural walkthroughs.',
+                    'تجاوز الصور المعمارية التقليدية. استكشف المساحات، '
+                        'وجرّب الإضاءة، واكتشف إمكانيات التصميم من خلال '
+                        'تجارب تفاعلية لحظية وجولات معمارية سينمائية.',
+                  ),
+                  style: const TextStyle(
+                    color: _muted,
+                    fontSize: 15,
+                    height: 1.9,
+                  ),
                 ),
               ),
               const SizedBox(height: 34),
               OutlinedButton(
-                onPressed: () {
-                  final target = _projectsKey.currentContext;
-
-                  if (target != null) {
-                    Scrollable.ensureVisible(
-                      target,
-                      duration: const Duration(milliseconds: 600),
-                      curve: Curves.easeInOut,
-                    );
-                  }
-                },
+                onPressed: _scrollToProjects,
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: ivory,
-                  side: const BorderSide(color: bronze),
+                  foregroundColor: _ivory,
+                  side: const BorderSide(color: _bronze),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 26,
                     vertical: 19,
@@ -164,9 +240,9 @@ class _InteractivePageState extends State<InteractivePage> {
                     borderRadius: BorderRadius.zero,
                   ),
                 ),
-                child: const Text(
-                  'EXPLORE PROJECTS',
-                  style: TextStyle(letterSpacing: 1),
+                child: Text(
+                  _t('EXPLORE PROJECTS', 'استكشف المشاريع'),
+                  style: TextStyle(letterSpacing: _ls(1)),
                 ),
               ),
             ],
@@ -184,90 +260,94 @@ class _InteractivePageState extends State<InteractivePage> {
     return Container(
       key: _projectsKey,
       width: double.infinity,
-      color: surface,
+      color: _surface,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 75),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1200),
-          child: FutureBuilder<List<AdminProject>>(
-            future: _projectsFuture,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return _loadingState();
-              }
-
-              if (snapshot.hasError) {
-                return _errorState();
-              }
-
-              if (_projects.isEmpty) {
-                return _emptyState();
-              }
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _label('SELECTED EXPERIENCES'),
-                  const SizedBox(height: 18),
-                  const Text(
-                    'Explore Our Projects.',
-                    style: TextStyle(
-                      color: ivory,
-                      fontSize: 36,
-                      fontWeight: FontWeight.w300,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  const Text(
-                    'Discover architectural spaces through interactive '
-                    'walkthroughs and cinematic presentations.',
-                    style: TextStyle(color: muted, fontSize: 14, height: 1.8),
-                  ),
-                  const SizedBox(height: 42),
-
-                  // Main video player
-                  if (_selectedProject != null) ...[
-                    _MainVideoPlayer(
-                      key: ValueKey(_selectedProject!.id),
-                      project: _selectedProject!,
-                    ),
-                    const SizedBox(height: 22),
-                    _selectedProjectInformation(_selectedProject!),
-                  ],
-
-                  const SizedBox(height: 48),
-                  const Divider(color: Color(0xFF41403D)),
-                  const SizedBox(height: 30),
-
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'MORE EXPERIENCES',
-                        style: TextStyle(
-                          color: bronze,
-                          fontSize: 11,
-                          letterSpacing: 2,
-                        ),
-                      ),
-                      Text(
-                        '${_projects.length} PROJECT${_projects.length == 1 ? '' : 'S'}',
-                        style: const TextStyle(
-                          color: muted,
-                          fontSize: 10,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 22),
-                  _projectGrid(),
-                ],
-              );
-            },
-          ),
+          child: _projectsContent(),
         ),
       ),
+    );
+  }
+
+  Widget _projectsContent() {
+    if (_isLoading) return _loadingState();
+    if (_hasError) return _errorState();
+    if (_projects.isEmpty) return _emptyState();
+
+    final selected = _selectedProject;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label(_t('SELECTED EXPERIENCES', 'تجارب مختارة')),
+        const SizedBox(height: 18),
+        Text(
+          _t('Explore Our Projects.', 'استكشف مشاريعنا.'),
+          style: const TextStyle(
+            color: _ivory,
+            fontSize: 36,
+            fontWeight: FontWeight.w300,
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          _t(
+            'Discover architectural spaces through interactive '
+                'walkthroughs and cinematic presentations.',
+            'اكتشف المساحات المعمارية من خلال جولات تفاعلية '
+                'وعروض سينمائية.',
+          ),
+          style: const TextStyle(color: _muted, fontSize: 14, height: 1.8),
+        ),
+        const SizedBox(height: 42),
+
+        if (selected != null)
+          Column(
+            key: _playerKey,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _MainVideoPlayer(
+                key: ValueKey(selected.id ?? selected.title),
+                project: selected,
+              ),
+              const SizedBox(height: 22),
+              _selectedProjectInformation(selected),
+            ],
+          ),
+
+        const SizedBox(height: 48),
+        const Divider(color: Color(0xFF41403D)),
+        const SizedBox(height: 30),
+
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              _t('MORE EXPERIENCES', 'المزيد من التجارب'),
+              style: TextStyle(
+                color: _bronze,
+                fontSize: 11,
+                letterSpacing: _ls(2),
+              ),
+            ),
+            Text(
+              _t(
+                '${_projects.length} PROJECT${_projects.length == 1 ? '' : 'S'}',
+                '${_projects.length} مشروع',
+              ),
+              style: TextStyle(
+                color: _muted,
+                fontSize: 10,
+                letterSpacing: _ls(1),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 22),
+        _projectGrid(),
+      ],
     );
   }
 
@@ -290,7 +370,7 @@ class _InteractivePageState extends State<InteractivePage> {
             Text(
               project.title,
               style: const TextStyle(
-                color: ivory,
+                color: _ivory,
                 fontSize: 25,
                 fontWeight: FontWeight.w400,
               ),
@@ -299,7 +379,11 @@ class _InteractivePageState extends State<InteractivePage> {
             if (projectDetails.isNotEmpty)
               Text(
                 projectDetails,
-                style: const TextStyle(color: muted, fontSize: 12, height: 1.6),
+                style: const TextStyle(
+                  color: _muted,
+                  fontSize: 12,
+                  height: 1.6,
+                ),
               ),
           ],
         );
@@ -307,10 +391,13 @@ class _InteractivePageState extends State<InteractivePage> {
         final descriptionWidget = Text(
           description.isNotEmpty
               ? description
-              : 'Explore this architectural project through its '
-                    'visual presentation.',
-          textAlign: isMobile ? TextAlign.left : TextAlign.right,
-          style: const TextStyle(color: muted, fontSize: 13, height: 1.8),
+              : _t(
+                  'Explore this architectural project through its '
+                      'visual presentation.',
+                  'استكشف هذا المشروع المعماري من خلال عرضه المرئي.',
+                ),
+          textAlign: isMobile ? TextAlign.start : TextAlign.end,
+          style: const TextStyle(color: _muted, fontSize: 13, height: 1.8),
         );
 
         if (isMobile) {
@@ -349,18 +436,15 @@ class _InteractivePageState extends State<InteractivePage> {
           spacing: spacing,
           runSpacing: 24,
           children: _projects.map((project) {
-            final isSelected = _selectedProject?.id == project.id;
+            final isSelected =
+                project.id != null && _selectedProject?.id == project.id;
 
             return SizedBox(
               width: itemWidth,
               child: _ProjectVideoCard(
                 project: project,
                 selected: isSelected,
-                onTap: () {
-                  setState(() {
-                    _selectedProject = project;
-                  });
-                },
+                onTap: () => _selectProject(project),
               ),
             );
           }).toList(),
@@ -370,16 +454,16 @@ class _InteractivePageState extends State<InteractivePage> {
   }
 
   Widget _loadingState() {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 90),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 90),
       child: Center(
         child: Column(
           children: [
-            CircularProgressIndicator(color: bronze),
-            SizedBox(height: 22),
+            const CircularProgressIndicator(color: _bronze),
+            const SizedBox(height: 22),
             Text(
-              'Loading interactive projects...',
-              style: TextStyle(color: muted),
+              _t('Loading interactive projects...', 'جاري تحميل المشاريع...'),
+              style: const TextStyle(color: _muted),
             ),
           ],
         ),
@@ -393,25 +477,28 @@ class _InteractivePageState extends State<InteractivePage> {
       child: Center(
         child: Column(
           children: [
-            const Icon(Icons.error_outline, color: bronze, size: 42),
+            const Icon(Icons.error_outline, color: _bronze, size: 42),
             const SizedBox(height: 18),
-            const Text(
-              'Unable to load projects.',
-              style: TextStyle(color: ivory, fontSize: 20),
+            Text(
+              _t('Unable to load projects.', 'تعذر تحميل المشاريع.'),
+              style: const TextStyle(color: _ivory, fontSize: 20),
             ),
             const SizedBox(height: 12),
-            const Text(
-              'Please try again in a moment.',
-              style: TextStyle(color: muted),
+            Text(
+              _t(
+                'Please try again in a moment.',
+                'يرجى المحاولة مرة أخرى بعد قليل.',
+              ),
+              style: const TextStyle(color: _muted),
             ),
             const SizedBox(height: 22),
             OutlinedButton(
               onPressed: _refreshProjects,
               style: OutlinedButton.styleFrom(
-                foregroundColor: bronze,
-                side: const BorderSide(color: bronze),
+                foregroundColor: _bronze,
+                side: const BorderSide(color: _bronze),
               ),
-              child: const Text('TRY AGAIN'),
+              child: Text(_t('TRY AGAIN', 'إعادة المحاولة')),
             ),
           ],
         ),
@@ -425,32 +512,35 @@ class _InteractivePageState extends State<InteractivePage> {
       child: Center(
         child: Column(
           children: [
-            const Icon(Icons.video_library_outlined, color: bronze, size: 52),
+            const Icon(Icons.video_library_outlined, color: _bronze, size: 52),
             const SizedBox(height: 22),
-            const Text(
-              'New Experiences Are Coming.',
+            Text(
+              _t('New Experiences Are Coming.', 'تجارب جديدة قريباً.'),
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: ivory,
+              style: const TextStyle(
+                color: _ivory,
                 fontSize: 27,
                 fontWeight: FontWeight.w300,
               ),
             ),
             const SizedBox(height: 14),
-            const Text(
-              'Our interactive and cinematic projects will appear here '
-              'once they are published.',
+            Text(
+              _t(
+                'Our interactive and cinematic projects will appear here '
+                    'once they are published.',
+                'ستظهر مشاريعنا التفاعلية والسينمائية هنا بمجرد نشرها.',
+              ),
               textAlign: TextAlign.center,
-              style: TextStyle(color: muted, fontSize: 14, height: 1.8),
+              style: const TextStyle(color: _muted, fontSize: 14, height: 1.8),
             ),
             const SizedBox(height: 22),
             OutlinedButton(
               onPressed: _refreshProjects,
               style: OutlinedButton.styleFrom(
-                foregroundColor: bronze,
-                side: const BorderSide(color: bronze),
+                foregroundColor: _bronze,
+                side: const BorderSide(color: _bronze),
               ),
-              child: const Text('REFRESH'),
+              child: Text(_t('REFRESH', 'تحديث')),
             ),
           ],
         ),
@@ -472,22 +562,38 @@ class _InteractivePageState extends State<InteractivePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _label('BEYOND TRADITIONAL VISUALIZATION'),
+              _label(
+                _t(
+                  'BEYOND TRADITIONAL VISUALIZATION',
+                  'ما بعد التصور التقليدي',
+                ),
+              ),
               const SizedBox(height: 20),
-              const Text(
-                'Architecture becomes an experience.',
-                style: TextStyle(
-                  color: ivory,
+              Text(
+                _t(
+                  'Architecture becomes an experience.',
+                  'العمارة تتحول إلى تجربة.',
+                ),
+                style: const TextStyle(
+                  color: _ivory,
                   fontSize: 34,
                   fontWeight: FontWeight.w300,
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
-                'Give clients a clearer understanding of their future '
-                'spaces through real-time exploration and carefully '
-                'crafted visual presentations.',
-                style: TextStyle(color: muted, fontSize: 14, height: 1.9),
+              Text(
+                _t(
+                  'Give clients a clearer understanding of their future '
+                      'spaces through real-time exploration and carefully '
+                      'crafted visual presentations.',
+                  'امنح عملاءك فهماً أوضح لمساحاتهم المستقبلية من خلال '
+                      'الاستكشاف اللحظي وعروض بصرية مصنوعة بعناية.',
+                ),
+                style: const TextStyle(
+                  color: _muted,
+                  fontSize: 14,
+                  height: 1.9,
+                ),
               ),
               const SizedBox(height: 42),
               LayoutBuilder(
@@ -504,50 +610,69 @@ class _InteractivePageState extends State<InteractivePage> {
                       _feature(
                         width: itemWidth,
                         icon: Icons.explore_outlined,
-                        title: 'Free Exploration',
-                        description:
-                            'Navigate through rooms and understand '
-                            'the layout before construction.',
+                        title: _t('Free Exploration', 'استكشاف حر'),
+                        description: _t(
+                          'Navigate through rooms and understand '
+                              'the layout before construction.',
+                          'تنقّل بين الغرف وافهم التوزيع قبل البناء.',
+                        ),
                       ),
                       _feature(
                         width: itemWidth,
                         icon: Icons.light_mode_outlined,
-                        title: 'Lighting Control',
-                        description:
-                            'Compare lighting conditions and discover '
-                            'how light transforms each space.',
+                        title: _t('Lighting Control', 'التحكم في الإضاءة'),
+                        description: _t(
+                          'Compare lighting conditions and discover '
+                              'how light transforms each space.',
+                          'قارن ظروف الإضاءة واكتشف كيف يغيّر الضوء '
+                              'كل مساحة.',
+                        ),
                       ),
                       _feature(
                         width: itemWidth,
                         icon: Icons.palette_outlined,
-                        title: 'Material Customization',
-                        description:
-                            'Explore different finishes, colors, and '
-                            'material combinations.',
+                        title: _t('Material Customization', 'تخصيص الخامات'),
+                        description: _t(
+                          'Explore different finishes, colors, and '
+                              'material combinations.',
+                          'استكشف تشطيبات وألوان وتوليفات خامات مختلفة.',
+                        ),
                       ),
                       _feature(
                         width: itemWidth,
                         icon: Icons.layers_outlined,
-                        title: 'Multi-Floor Navigation',
-                        description:
-                            'Move between different levels of a building '
-                            'within supported interactive projects.',
+                        title: _t(
+                          'Multi-Floor Navigation',
+                          'التنقل بين الأدوار',
+                        ),
+                        description: _t(
+                          'Move between different levels of a building '
+                              'within supported interactive projects.',
+                          'انتقل بين أدوار المبنى المختلفة داخل المشاريع '
+                              'التفاعلية المدعومة.',
+                        ),
                       ),
                       _feature(
                         width: itemWidth,
                         icon: Icons.movie_outlined,
-                        title: 'Cinematic Walkthroughs',
-                        description:
-                            'Present architectural spaces through '
-                            'carefully composed cinematic sequences.',
+                        title: _t('Cinematic Walkthroughs', 'جولات سينمائية'),
+                        description: _t(
+                          'Present architectural spaces through '
+                              'carefully composed cinematic sequences.',
+                          'اعرض المساحات المعمارية من خلال مشاهد '
+                              'سينمائية مُعدّة بعناية.',
+                        ),
                       ),
                       _feature(
                         width: itemWidth,
                         icon: Icons.view_in_ar_outlined,
-                        title: 'Virtual Reality',
-                        description:
-                            'Take architectural exploration further '
-                            'with immersive VR experiences.',
+                        title: _t('Virtual Reality', 'الواقع الافتراضي'),
+                        description: _t(
+                          'Take architectural exploration further '
+                              'with immersive VR experiences.',
+                          'خُذ الاستكشاف المعماري لمستوى أبعد بتجارب '
+                              'واقع افتراضي غامرة.',
+                        ),
                       ),
                     ],
                   );
@@ -571,18 +696,21 @@ class _InteractivePageState extends State<InteractivePage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: bronze, size: 29),
+          Icon(icon, color: _bronze, size: 29),
           const SizedBox(width: 18),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(color: ivory, fontSize: 19)),
+                Text(
+                  title,
+                  style: const TextStyle(color: _ivory, fontSize: 19),
+                ),
                 const SizedBox(height: 10),
                 Text(
                   description,
                   style: const TextStyle(
-                    color: muted,
+                    color: _muted,
                     fontSize: 13,
                     height: 1.8,
                   ),
@@ -602,39 +730,42 @@ class _InteractivePageState extends State<InteractivePage> {
   Widget _callToAction(BuildContext context) {
     return Container(
       width: double.infinity,
-      color: surface,
+      color: _surface,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 75),
       child: Column(
         children: [
-          const Text(
-            'Ready to Experience Your Project?',
+          Text(
+            _t('Ready to Experience Your Project?', 'مستعد لتعيش مشروعك؟'),
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: ivory,
+            style: const TextStyle(
+              color: _ivory,
               fontSize: 32,
               fontWeight: FontWeight.w300,
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
-            'Let’s bring your architectural vision to life.',
+          Text(
+            _t(
+              'Let’s bring your architectural vision to life.',
+              'لنحوّل رؤيتك المعمارية إلى واقع.',
+            ),
             textAlign: TextAlign.center,
-            style: TextStyle(color: muted, fontSize: 14, height: 1.8),
+            style: const TextStyle(color: _muted, fontSize: 14, height: 1.8),
           ),
           const SizedBox(height: 28),
           OutlinedButton(
             onPressed: () => Navigator.pop(context),
             style: OutlinedButton.styleFrom(
-              foregroundColor: ivory,
-              side: const BorderSide(color: bronze),
+              foregroundColor: _ivory,
+              side: const BorderSide(color: _bronze),
               padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 21),
               shape: const RoundedRectangleBorder(
                 borderRadius: BorderRadius.zero,
               ),
             ),
-            child: const Text(
-              'EXPLORE INNOVISTA',
-              style: TextStyle(letterSpacing: 1),
+            child: Text(
+              _t('EXPLORE INNOVISTA', 'استكشف INNOVISTA'),
+              style: TextStyle(letterSpacing: _ls(1)),
             ),
           ),
         ],
@@ -646,11 +777,14 @@ class _InteractivePageState extends State<InteractivePage> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(28),
-      color: background,
-      child: const Text(
-        'INNOVISTA     —     Design it. See it. Experience it.',
+      color: _bg,
+      child: Text(
+        _t(
+          'INNOVISTA     —     Design it. See it. Experience it.',
+          'INNOVISTA     —     صمّمه. شاهده. عِشه.',
+        ),
         textAlign: TextAlign.center,
-        style: TextStyle(color: muted, fontSize: 11, letterSpacing: 1),
+        style: TextStyle(color: _muted, fontSize: 11, letterSpacing: _ls(1)),
       ),
     );
   }
@@ -658,7 +792,7 @@ class _InteractivePageState extends State<InteractivePage> {
   Widget _label(String text) {
     return Text(
       text,
-      style: const TextStyle(color: bronze, fontSize: 10, letterSpacing: 2),
+      style: TextStyle(color: _bronze, fontSize: 10, letterSpacing: _ls(2)),
     );
   }
 }
@@ -677,10 +811,6 @@ class _MainVideoPlayer extends StatefulWidget {
 }
 
 class _MainVideoPlayerState extends State<_MainVideoPlayer> {
-  static const Color ivory = Color(0xFFF4EFE6);
-  static const Color bronze = Color(0xFFB6A080);
-  static const Color muted = Color(0xFFAAA69F);
-
   VideoPlayerController? _controller;
 
   bool _initializing = true;
@@ -722,37 +852,48 @@ class _MainVideoPlayerState extends State<_MainVideoPlayer> {
 
       if (!mounted) return;
 
-      setState(() {
-        _initializing = false;
-      });
-    } catch (e) {
+      setState(() => _initializing = false);
+    } catch (_) {
       if (!mounted) return;
+
+      // Release the failed controller so a retry starts clean.
+      _controller = null;
+      controller?.dispose();
 
       setState(() {
         _initializing = false;
-        _error = 'This video could not be loaded.';
+        _error = _t(
+          'This video could not be loaded.',
+          'تعذر تحميل هذا الفيديو.',
+        );
       });
     }
+  }
+
+  void _retry() {
+    setState(() {
+      _initializing = true;
+      _error = null;
+    });
+    _initializeVideo();
+  }
+
+  void _openFullscreen() {
+    final controller = _controller;
+    if (controller == null) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => _FullscreenVideoPage(controller: controller),
+      ),
+    );
   }
 
   @override
   void dispose() {
     _controller?.dispose();
     super.dispose();
-  }
-
-  String _formatDuration(Duration duration) {
-    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
-
-    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
-
-    final hours = duration.inHours;
-
-    if (hours > 0) {
-      return '$hours:$minutes:$seconds';
-    }
-
-    return '$minutes:$seconds';
   }
 
   @override
@@ -766,165 +907,310 @@ class _MainVideoPlayerState extends State<_MainVideoPlayer> {
 
   Widget _buildPlayerContent() {
     if (_initializing) {
-      return const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: bronze),
-            SizedBox(height: 16),
-            Text(
-              'Preparing experience...',
-              style: TextStyle(color: muted, fontSize: 13),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (_error != null || _controller == null) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.videocam_off_outlined, color: bronze, size: 42),
-            const SizedBox(height: 15),
+            const CircularProgressIndicator(color: _bronze),
+            const SizedBox(height: 16),
             Text(
-              _error ?? 'Video unavailable.',
-              style: const TextStyle(color: muted),
+              _t('Preparing experience...', 'جاري تجهيز التجربة...'),
+              style: const TextStyle(color: _muted, fontSize: 13),
             ),
           ],
         ),
       );
     }
 
-    return ValueListenableBuilder<VideoPlayerValue>(
-      valueListenable: _controller!,
-      builder: (context, value, child) {
-        if (value.hasError) {
-          return const Center(
-            child: Text(
-              'Unable to play this video.',
-              style: TextStyle(color: muted),
-            ),
-          );
-        }
+    final controller = _controller;
 
-        return Stack(
-          alignment: Alignment.bottomCenter,
+    if (_error != null || controller == null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Positioned.fill(
-              child: GestureDetector(
-                onTap: () {
-                  if (value.isPlaying) {
-                    _controller!.pause();
-                  } else {
-                    _controller!.play();
-                  }
-                },
-                child: VideoPlayer(_controller!),
+            const Icon(Icons.videocam_off_outlined, color: _bronze, size: 42),
+            const SizedBox(height: 15),
+            Text(
+              _error ?? _t('Video unavailable.', 'الفيديو غير متاح.'),
+              style: const TextStyle(color: _muted),
+            ),
+            const SizedBox(height: 14),
+            TextButton(
+              onPressed: _retry,
+              child: Text(
+                _t('TRY AGAIN', 'إعادة المحاولة'),
+                style: const TextStyle(color: _bronze),
               ),
             ),
+          ],
+        ),
+      );
+    }
 
-            // Dark control background
-            Container(
-              height: 65,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.85),
-                  ],
-                ),
+    return _VideoSurface(
+      controller: controller,
+      isFullscreen: false,
+      onToggleFullscreen: _openFullscreen,
+    );
+  }
+}
+
+// =============================================================================
+// Video surface (video + controls), shared by inline and fullscreen players
+// =============================================================================
+
+class _VideoSurface extends StatelessWidget {
+  final VideoPlayerController controller;
+  final bool isFullscreen;
+  final VoidCallback onToggleFullscreen;
+
+  const _VideoSurface({
+    required this.controller,
+    required this.isFullscreen,
+    required this.onToggleFullscreen,
+  });
+
+  bool _isEnded(VideoPlayerValue value) {
+    return value.duration > Duration.zero && value.position >= value.duration;
+  }
+
+  Future<void> _togglePlay(VideoPlayerValue value) async {
+    if (value.isPlaying) {
+      await controller.pause();
+      return;
+    }
+
+    if (_isEnded(value)) {
+      await controller.seekTo(Duration.zero);
+    }
+
+    await controller.play();
+  }
+
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    final hours = duration.inHours;
+
+    if (hours > 0) return '$hours:$minutes:$seconds';
+
+    return '$minutes:$seconds';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Player controls stay left-to-right in every language.
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: ValueListenableBuilder<VideoPlayerValue>(
+        valueListenable: controller,
+        builder: (context, value, child) {
+          if (value.hasError) {
+            return Center(
+              child: Text(
+                _t('Unable to play this video.', 'تعذر تشغيل هذا الفيديو.'),
+                style: const TextStyle(color: _muted),
               ),
-            ),
+            );
+          }
 
-            // Controls
-            Positioned(
-              left: 14,
-              right: 14,
-              bottom: 10,
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () {
-                      if (value.isPlaying) {
-                        _controller!.pause();
-                      } else {
-                        _controller!.play();
-                      }
-                    },
-                    icon: Icon(
-                      value.isPlaying
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
-                      color: ivory,
-                      size: 27,
+          final ended = _isEnded(value);
+          final showBigButton =
+              !value.isPlaying && (value.position == Duration.zero || ended);
+          final aspect = value.isInitialized && value.aspectRatio > 0
+              ? value.aspectRatio
+              : 16 / 9;
+
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              // Video, letterboxed so it is never stretched.
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _togglePlay(value),
+                  child: Center(
+                    child: AspectRatio(
+                      aspectRatio: aspect,
+                      child: VideoPlayer(controller),
                     ),
                   ),
-                  Text(
-                    _formatDuration(value.position),
-                    style: const TextStyle(color: ivory, fontSize: 10),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: VideoProgressIndicator(
-                      _controller!,
-                      allowScrubbing: true,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      colors: const VideoProgressColors(
-                        playedColor: bronze,
-                        bufferedColor: Color(0xFF77736D),
-                        backgroundColor: Color(0xFF45433F),
+                ),
+              ),
+
+              // Dark gradient behind controls (does not block taps).
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: 65,
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withValues(alpha: 0.85),
+                        ],
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Text(
-                    _formatDuration(value.duration),
-                    style: const TextStyle(color: ivory, fontSize: 10),
-                  ),
-                  const SizedBox(width: 5),
-                  IconButton(
-                    onPressed: () {
-                      final volume = value.volume > 0 ? 0.0 : 1.0;
-                      _controller!.setVolume(volume);
-                    },
-                    icon: Icon(
-                      value.volume > 0
-                          ? Icons.volume_up_rounded
-                          : Icons.volume_off_rounded,
-                      color: ivory,
-                      size: 21,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
 
-            if (!value.isPlaying && value.position == Duration.zero)
-              Center(
-                child: GestureDetector(
-                  onTap: () => _controller!.play(),
-                  child: Container(
-                    width: 68,
-                    height: 68,
-                    decoration: BoxDecoration(
-                      color: bronze.withValues(alpha: 0.9),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.play_arrow_rounded,
-                      color: Colors.black,
-                      size: 42,
+              // Buffering indicator.
+              if (value.isBuffering && value.isPlaying)
+                const Center(
+                  child: SizedBox(
+                    width: 38,
+                    height: 38,
+                    child: CircularProgressIndicator(
+                      color: _bronze,
+                      strokeWidth: 2.5,
                     ),
                   ),
                 ),
+
+              // Controls.
+              Positioned(
+                left: 14,
+                right: 14,
+                bottom: 10,
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => _togglePlay(value),
+                      tooltip: value.isPlaying
+                          ? _t('Pause', 'إيقاف مؤقت')
+                          : _t('Play', 'تشغيل'),
+                      icon: Icon(
+                        ended
+                            ? Icons.replay_rounded
+                            : (value.isPlaying
+                                  ? Icons.pause_rounded
+                                  : Icons.play_arrow_rounded),
+                        color: _ivory,
+                        size: 27,
+                      ),
+                    ),
+                    Text(
+                      _formatDuration(value.position),
+                      style: const TextStyle(color: _ivory, fontSize: 10),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: VideoProgressIndicator(
+                        controller,
+                        allowScrubbing: true,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        colors: const VideoProgressColors(
+                          playedColor: _bronze,
+                          bufferedColor: Color(0xFF77736D),
+                          backgroundColor: Color(0xFF45433F),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      _formatDuration(value.duration),
+                      style: const TextStyle(color: _ivory, fontSize: 10),
+                    ),
+                    const SizedBox(width: 5),
+                    IconButton(
+                      onPressed: () {
+                        controller.setVolume(value.volume > 0 ? 0.0 : 1.0);
+                      },
+                      tooltip: _t('Mute', 'كتم الصوت'),
+                      icon: Icon(
+                        value.volume > 0
+                            ? Icons.volume_up_rounded
+                            : Icons.volume_off_rounded,
+                        color: _ivory,
+                        size: 21,
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: onToggleFullscreen,
+                      tooltip: isFullscreen
+                          ? _t('Exit fullscreen', 'إنهاء ملء الشاشة')
+                          : _t('Fullscreen', 'ملء الشاشة'),
+                      icon: Icon(
+                        isFullscreen
+                            ? Icons.fullscreen_exit_rounded
+                            : Icons.fullscreen_rounded,
+                        color: _ivory,
+                        size: 23,
+                      ),
+                    ),
+                  ],
+                ),
               ),
+
+              if (showBigButton)
+                Center(
+                  child: GestureDetector(
+                    onTap: () => _togglePlay(value),
+                    child: Container(
+                      width: 68,
+                      height: 68,
+                      decoration: BoxDecoration(
+                        color: _bronze.withValues(alpha: 0.9),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        ended ? Icons.replay_rounded : Icons.play_arrow_rounded,
+                        color: Colors.black,
+                        size: 42,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Fullscreen player page (re-uses the same controller)
+// =============================================================================
+
+class _FullscreenVideoPage extends StatelessWidget {
+  final VideoPlayerController controller;
+
+  const _FullscreenVideoPage({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: _VideoSurface(
+                controller: controller,
+                isFullscreen: true,
+                onToggleFullscreen: () => Navigator.of(context).pop(),
+              ),
+            ),
+            Positioned(
+              top: 6,
+              left: 6,
+              child: IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close_rounded, color: _ivory),
+                tooltip: _t('Close', 'إغلاق'),
+              ),
+            ),
           ],
-        );
-      },
+        ),
+      ),
     );
   }
 }
@@ -944,10 +1230,6 @@ class _ProjectVideoCard extends StatelessWidget {
     required this.onTap,
   });
 
-  static const Color ivory = Color(0xFFF4EFE6);
-  static const Color bronze = Color(0xFFB6A080);
-  static const Color muted = Color(0xFFAAA69F);
-
   @override
   Widget build(BuildContext context) {
     final imageUrl = _safeText(project.coverImage);
@@ -958,13 +1240,13 @@ class _ProjectVideoCard extends StatelessWidget {
     ].where((item) => item.isNotEmpty).join('  •  ');
 
     return Material(
-      color: const Color(0xFF171717),
+      color: _bg,
       child: InkWell(
         onTap: onTap,
         child: Container(
           decoration: BoxDecoration(
             border: Border.all(
-              color: selected ? bronze : const Color(0xFF373633),
+              color: selected ? _bronze : const Color(0xFF373633),
               width: selected ? 1.5 : 1,
             ),
           ),
@@ -995,8 +1277,8 @@ class _ProjectVideoCard extends StatelessWidget {
                       ),
                     ),
 
-                    Positioned(
-                      left: 12,
+                    PositionedDirectional(
+                      start: 12,
                       top: 12,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -1004,33 +1286,33 @@ class _ProjectVideoCard extends StatelessWidget {
                           vertical: 6,
                         ),
                         color: Colors.black.withValues(alpha: 0.75),
-                        child: const Text(
-                          'VIDEO PROJECT',
+                        child: Text(
+                          _t('VIDEO PROJECT', 'مشروع فيديو'),
                           style: TextStyle(
-                            color: ivory,
+                            color: _ivory,
                             fontSize: 9,
-                            letterSpacing: 1,
+                            letterSpacing: _ls(1),
                           ),
                         ),
                       ),
                     ),
 
                     if (selected)
-                      Positioned(
-                        right: 12,
+                      PositionedDirectional(
+                        end: 12,
                         top: 12,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
                             vertical: 6,
                           ),
-                          color: bronze,
-                          child: const Text(
-                            'NOW PLAYING',
+                          color: _bronze,
+                          child: Text(
+                            _t('NOW PLAYING', 'يعمل الآن'),
                             style: TextStyle(
                               color: Colors.black,
                               fontSize: 9,
-                              letterSpacing: 1,
+                              letterSpacing: _ls(1),
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -1048,7 +1330,7 @@ class _ProjectVideoCard extends StatelessWidget {
                       project.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: ivory, fontSize: 17),
+                      style: const TextStyle(color: _ivory, fontSize: 17),
                     ),
                     const SizedBox(height: 9),
                     if (projectDetails.isNotEmpty)
@@ -1056,29 +1338,31 @@ class _ProjectVideoCard extends StatelessWidget {
                         projectDetails,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: muted, fontSize: 11),
+                        style: const TextStyle(color: _muted, fontSize: 11),
                       ),
                     const SizedBox(height: 15),
                     Row(
                       children: [
                         const Icon(
                           Icons.play_arrow_rounded,
-                          color: bronze,
+                          color: _bronze,
                           size: 17,
                         ),
                         const SizedBox(width: 5),
                         Text(
-                          selected ? 'Currently selected' : 'Watch project',
-                          style: const TextStyle(
-                            color: bronze,
+                          selected
+                              ? _t('Currently selected', 'قيد التشغيل')
+                              : _t('Watch project', 'شاهد المشروع'),
+                          style: TextStyle(
+                            color: _bronze,
                             fontSize: 11,
-                            letterSpacing: 0.5,
+                            letterSpacing: _ls(0.5),
                           ),
                         ),
                         const Spacer(),
                         const Icon(
                           Icons.arrow_forward,
-                          color: bronze,
+                          color: _bronze,
                           size: 16,
                         ),
                       ],
@@ -1097,7 +1381,7 @@ class _ProjectVideoCard extends StatelessWidget {
     return Container(
       color: const Color(0xFF292824),
       child: const Center(
-        child: Icon(Icons.architecture_outlined, color: bronze, size: 42),
+        child: Icon(Icons.architecture_outlined, color: _bronze, size: 42),
       ),
     );
   }
