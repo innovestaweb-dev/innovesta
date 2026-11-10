@@ -305,7 +305,8 @@ class ServicesPage extends StatelessWidget {
               child: Image.asset(
                 'assets/images/servce_cover.webp',
                 fit: BoxFit.cover,
-                // Decorative background: no alt text needed.
+                alignment: AlignmentDirectional
+                    .centerEnd, // السرير والشباك يفضلوا ظاهرين
                 excludeFromSemantics: true,
                 errorBuilder: (_, _, _) => const SizedBox.shrink(),
               ),
