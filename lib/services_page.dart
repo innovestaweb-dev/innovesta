@@ -1460,9 +1460,7 @@ List<_ServiceData> _serviceData() {
         AppLanguage.text('Cinematic Camera Movement', 'حركة كاميرا سينمائية'),
         AppLanguage.text('Day & Night Scenes', 'مشاهد نهارية وليلية'),
       ],
-      image:
-          'https://images.unsplash.com/photo-1600607687920-4e2a09cf159d'
-          '?auto=format&fit=crop&w=1200&q=80',
+      image: 'assets/images/home_cover.webp',
       alt: AppLanguage.text(
         'Contemporary interior architecture for cinematic presentation',
         'تصميم داخلي معاصر للعرض المعماري السينمائي',

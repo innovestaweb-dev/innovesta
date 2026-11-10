@@ -507,7 +507,7 @@ class _HomePageState extends State<HomePage> {
         fit: StackFit.expand,
         children: [
           Image.asset(
-            'assets/images/home.webp',
+            'assets/images/hero.webp',
             fit: BoxFit.cover,
             // Shows a bit more of the ceiling so the ring chandelier is not
             // cut, while the kitchen island and stools stay in frame.
