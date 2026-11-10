@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 
 import 'app_language.dart';
@@ -24,6 +25,20 @@ const Color _bronze = Color(0xFFB6A080);
 const Color _muted = Color(0xFFAAA69F);
 const Color _divider = Color(0xFF3B3935);
 const Color _placeholder = Color(0xFF292723);
+
+// -----------------------------------------------------------------------------
+// IMAGES
+// Folder where the local images live. It MUST match the folder registered in
+// pubspec.yaml (for example `- assets/images/`). If your folder is different,
+// change this one line only.
+// -----------------------------------------------------------------------------
+const String _imagesDir = 'assets/images/';
+
+const String _heroImage = '${_imagesDir}servce_cover.webp';
+const String _exteriorImage = '${_imagesDir}3.webp';
+const String _poolVillaImage = '${_imagesDir}2.webp';
+const String _interactiveImage =
+    '${_imagesDir}فيلا_فاخرة_عند_الغروب_مع_قائمة_تحكم.webp';
 
 class ServicesPage extends StatelessWidget {
   const ServicesPage({super.key});
@@ -303,12 +318,18 @@ class ServicesPage extends StatelessWidget {
             child: ColoredBox(
               color: _placeholder,
               child: Image.asset(
-                'assets/images/servce_cover.webp',
+                _heroImage,
                 fit: BoxFit.cover,
-                alignment: AlignmentDirectional
-                    .centerEnd, // السرير والشباك يفضلوا ظاهرين
+                // Keeps the bed and the window visible, away from the text.
+                alignment: AlignmentDirectional.centerEnd,
+                // Decorative background: no alt text needed.
                 excludeFromSemantics: true,
-                errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                errorBuilder: (_, error, _) {
+                  // If the cover is missing, the exact reason is printed in
+                  // the debug console instead of failing silently.
+                  debugPrint('Hero image failed to load ($_heroImage): $error');
+                  return const SizedBox.shrink();
+                },
               ),
             ),
           ),
@@ -320,8 +341,8 @@ class ServicesPage extends StatelessWidget {
                   end: AlignmentDirectional.centerEnd,
                   colors: [
                     _background.withValues(alpha: 0.96),
-                    _background.withValues(alpha: 0.72),
-                    _background.withValues(alpha: 0.15),
+                    _background.withValues(alpha: 0.80),
+                    _background.withValues(alpha: 0.20),
                   ],
                 ),
               ),
@@ -463,6 +484,7 @@ class ServicesPage extends StatelessWidget {
       service.image,
       height: isMobile ? 245 : 365,
       alt: service.alt,
+      alignment: service.imageAlignment,
     );
 
     final details = _serviceDetails(service, isMobile: isMobile);
@@ -589,24 +611,31 @@ class ServicesPage extends StatelessWidget {
           Stack(
             children: [
               _photo(
-                'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c'
-                '?auto=format&fit=crop&w=1600&q=80',
+                _interactiveImage,
                 height: imageHeight,
+                // Keeps the control menu (top-left) inside the visible area.
+                alignment: isMobile
+                    ? const Alignment(-0.9, 0)
+                    : const Alignment(0, -0.8),
                 alt: AppLanguage.text(
-                  'Modern architectural interior visualization',
-                  'تصور معماري لمساحة داخلية حديثة',
+                  'Luxury villa with an interactive control menu for floors, '
+                      'sunlight and furniture',
+                  'فيلا فاخرة مع قائمة تحكم تفاعلية للطوابق والإضاءة '
+                      'والأثاث',
                 ),
               ),
               Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                      colors: [
-                        Colors.black.withValues(alpha: 0.75),
-                        Colors.transparent,
-                      ],
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          Colors.black.withValues(alpha: 0.75),
+                          Colors.transparent,
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -1239,32 +1268,67 @@ class ServicesPage extends StatelessWidget {
 
   /// Photo with fixed size (no layout shift), placeholder color, a soft
   /// fade-in, alt text for accessibility / SEO and a fallback on error.
-  Widget _photo(String url, {required double height, required String alt}) {
+  ///
+  /// [source] can be a web URL (http/https) or a local asset path.
+  /// [alignment] controls which part of the image stays visible when it is
+  /// cropped by BoxFit.cover.
+  Widget _photo(
+    String source, {
+    required double height,
+    required String alt,
+    Alignment alignment = Alignment.center,
+  }) {
+    Widget frameBuilder(
+      BuildContext context,
+      Widget child,
+      int? frame,
+      bool wasSynchronouslyLoaded,
+    ) {
+      if (wasSynchronouslyLoaded) return child;
+
+      return AnimatedOpacity(
+        opacity: frame == null ? 0 : 1,
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeOut,
+        child: child,
+      );
+    }
+
+    Widget errorBuilder(BuildContext context, Object error, StackTrace? _) {
+      debugPrint('Image failed to load ($source): $error');
+      return const Center(
+        child: Icon(Icons.image_outlined, color: _bronze, size: 35),
+      );
+    }
+
+    final isNetwork = source.startsWith('http');
+
     return SizedBox(
       width: double.infinity,
       height: height,
       child: ColoredBox(
         color: _placeholder,
-        child: Image.network(
-          url,
-          width: double.infinity,
-          height: height,
-          fit: BoxFit.cover,
-          semanticLabel: alt,
-          frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-            if (wasSynchronouslyLoaded) return child;
-
-            return AnimatedOpacity(
-              opacity: frame == null ? 0 : 1,
-              duration: const Duration(milliseconds: 450),
-              curve: Curves.easeOut,
-              child: child,
-            );
-          },
-          errorBuilder: (_, _, _) => const Center(
-            child: Icon(Icons.image_outlined, color: _bronze, size: 35),
-          ),
-        ),
+        child: isNetwork
+            ? Image.network(
+                source,
+                width: double.infinity,
+                height: height,
+                fit: BoxFit.cover,
+                alignment: alignment,
+                semanticLabel: alt,
+                frameBuilder: frameBuilder,
+                errorBuilder: errorBuilder,
+              )
+            : Image.asset(
+                source,
+                width: double.infinity,
+                height: height,
+                fit: BoxFit.cover,
+                alignment: alignment,
+                semanticLabel: alt,
+                frameBuilder: frameBuilder,
+                errorBuilder: errorBuilder,
+              ),
       ),
     );
   }
@@ -1339,12 +1403,13 @@ List<_ServiceData> _serviceData() {
         AppLanguage.text('Lighting & Atmosphere', 'الإضاءة والأجواء'),
         AppLanguage.text('High-resolution Images', 'صور عالية الجودة'),
       ],
-      image:
-          'https://images.unsplash.com/photo-1600210492486-724fe5c67fb0'
-          '?auto=format&fit=crop&w=1200&q=80',
+      // Portrait render: the alignment keeps the villa itself in the frame
+      // instead of the sky.
+      image: _exteriorImage,
+      imageAlignment: const Alignment(0, 0.12),
       alt: AppLanguage.text(
-        'Photorealistic modern interior architectural visualization',
-        'تصور معماري واقعي لتصميم داخلي حديث',
+        'Photorealistic exterior render of a modern two-storey villa',
+        'ريندر خارجي واقعي لفيلا حديثة من طابقين',
       ),
     ),
     _ServiceData(
@@ -1372,12 +1437,10 @@ List<_ServiceData> _serviceData() {
         AppLanguage.text('Lighting Control', 'التحكم في الإضاءة'),
         AppLanguage.text('Multi-floor Navigation', 'التنقل بين الطوابق'),
       ],
-      image:
-          'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c'
-          '?auto=format&fit=crop&w=1200&q=80',
+      image: _poolVillaImage,
       alt: AppLanguage.text(
-        'Modern architectural space for interactive visualization',
-        'مساحة معمارية حديثة للتصور التفاعلي',
+        'Modern villa with pool and garden for interactive visualization',
+        'فيلا حديثة مع حمام سباحة وحديقة للتصور التفاعلي',
       ),
     ),
     _ServiceData(
@@ -1517,7 +1580,10 @@ class _ServiceData {
   final String title;
   final String description;
   final List<String> features;
+
+  /// A web URL (http/https) or a local asset path.
   final String image;
+  final Alignment imageAlignment;
   final String alt;
 
   const _ServiceData({
@@ -1528,6 +1594,7 @@ class _ServiceData {
     required this.features,
     required this.image,
     required this.alt,
+    this.imageAlignment = Alignment.center,
   });
 }
 
