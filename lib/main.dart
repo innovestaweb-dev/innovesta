@@ -494,11 +494,10 @@ class _HomePageState extends State<HomePage> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.network(
+          Image.asset(
             // 1800px / q80 is visually the same here but much lighter
             // than 2200px / q90.
-            'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c'
-            '?auto=format&fit=crop&w=1800&q=80',
+            'assets/images/home_cover.webp',
             fit: BoxFit.cover,
             // Decorative background: no alt text needed.
             excludeFromSemantics: true,
