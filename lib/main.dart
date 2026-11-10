@@ -486,13 +486,18 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // Warm dark brown used for the hero scrim. Keeps the bright, airy photo
+  // feeling warm instead of turning it grey like a pure black overlay does.
+  static const Color _heroScrim = Color(0xFF1F1812);
+
   // HERO SECTION
   Widget _buildHero(bool isMobile) {
     // Soft shadow behind the hero texts so they stay readable even where the
     // photo is bright (cream walls, marble, lights).
     const List<Shadow> textShadows = [
-      Shadow(color: Color(0xB3000000), blurRadius: 18),
-      Shadow(color: Color(0x80000000), blurRadius: 6),
+      Shadow(color: Color(0xCC000000), blurRadius: 22),
+      Shadow(color: Color(0x99000000), blurRadius: 8),
+      Shadow(color: Color(0x66000000), blurRadius: 2, offset: Offset(0, 1)),
     ];
 
     return SizedBox(
@@ -504,8 +509,11 @@ class _HomePageState extends State<HomePage> {
           Image.asset(
             'assets/images/home_cover.webp',
             fit: BoxFit.cover,
-            // Keeps the TV wall / sofa area in view when the image is cropped.
-            alignment: isMobile ? const Alignment(0.2, 0) : Alignment.center,
+            // Shows a bit more of the ceiling so the ring chandelier is not
+            // cut, while the kitchen island and stools stay in frame.
+            alignment: isMobile
+                ? const Alignment(0.15, 0)
+                : const Alignment(0, -0.2),
             // Decorative background: no alt text needed.
             excludeFromSemantics: true,
             errorBuilder: (_, _, _) =>
@@ -522,16 +530,20 @@ class _HomePageState extends State<HomePage> {
                 end: Alignment.centerRight,
                 colors: isMobile
                     ? [
-                        backgroundColor.withValues(alpha: 0.82),
-                        backgroundColor.withValues(alpha: 0.72),
+                        _heroScrim.withValues(alpha: 0.62),
+                        _heroScrim.withValues(alpha: 0.48),
                       ]
                     : [
-                        backgroundColor.withValues(alpha: 0.95),
-                        backgroundColor.withValues(alpha: 0.84),
-                        backgroundColor.withValues(alpha: 0.42),
-                        backgroundColor.withValues(alpha: 0.12),
+                        _heroScrim.withValues(alpha: 0.74),
+                        _heroScrim.withValues(alpha: 0.66),
+                        _heroScrim.withValues(alpha: 0.46),
+                        _heroScrim.withValues(alpha: 0.20),
+                        _heroScrim.withValues(alpha: 0.05),
+                        Colors.transparent,
                       ],
-                stops: isMobile ? null : const [0.0, 0.40, 0.72, 1.0],
+                stops: isMobile
+                    ? null
+                    : const [0.0, 0.22, 0.38, 0.52, 0.64, 0.76],
               ),
             ),
           ),
@@ -545,12 +557,12 @@ class _HomePageState extends State<HomePage> {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  backgroundColor.withValues(alpha: 0.45),
+                  backgroundColor.withValues(alpha: 0.18),
                   Colors.transparent,
                   Colors.transparent,
-                  backgroundColor.withValues(alpha: 0.70),
+                  backgroundColor.withValues(alpha: isMobile ? 0.35 : 0.0),
                 ],
-                stops: const [0.0, 0.22, 0.70, 1.0],
+                stops: const [0.0, 0.15, 0.80, 1.0],
               ),
             ),
           ),

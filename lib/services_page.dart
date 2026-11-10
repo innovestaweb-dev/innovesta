@@ -302,9 +302,8 @@ class ServicesPage extends StatelessWidget {
           Positioned.fill(
             child: ColoredBox(
               color: _placeholder,
-              child: Image.network(
-                'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c'
-                '?auto=format&fit=crop&w=1800&q=80',
+              child: Image.asset(
+                'assets/images/servce_cover.webp',
                 fit: BoxFit.cover,
                 // Decorative background: no alt text needed.
                 excludeFromSemantics: true,
