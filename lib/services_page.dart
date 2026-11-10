@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 
 import 'app_language.dart';
@@ -37,8 +36,7 @@ const String _imagesDir = 'assets/images/';
 const String _heroImage = '${_imagesDir}servce_cover.webp';
 const String _exteriorImage = '${_imagesDir}3.webp';
 const String _poolVillaImage = '${_imagesDir}2.webp';
-const String _interactiveImage =
-    '${_imagesDir}فيلا_فاخرة_عند_الغروب_مع_قائمة_تحكم.webp';
+const String _interactiveImage = '${_imagesDir}3.webp';
 
 class ServicesPage extends StatelessWidget {
   const ServicesPage({super.key});
