@@ -35,7 +35,7 @@ const String _imagesDir = 'assets/images/';
 
 const String _heroImage = '${_imagesDir}servce_cover.webp';
 const String _exteriorImage = '${_imagesDir}3.webp';
-const String _poolVillaImage = '${_imagesDir}2.webp';
+const String _poolVillaImage = '${_imagesDir}5.webp';
 const String _interactiveImage = '${_imagesDir}3.webp';
 
 class ServicesPage extends StatelessWidget {
