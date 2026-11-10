@@ -502,7 +502,7 @@ class _HomePageState extends State<HomePage> {
         fit: StackFit.expand,
         children: [
           Image.asset(
-            'assets/images/h_cover_01.webp',
+            'assets/images/home_cover.webp',
             fit: BoxFit.cover,
             // Keeps the TV wall / sofa area in view when the image is cropped.
             alignment: isMobile ? const Alignment(0.2, 0) : Alignment.center,
