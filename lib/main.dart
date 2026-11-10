@@ -488,6 +488,13 @@ class _HomePageState extends State<HomePage> {
 
   // HERO SECTION
   Widget _buildHero(bool isMobile) {
+    // Soft shadow behind the hero texts so they stay readable even where the
+    // photo is bright (cream walls, marble, lights).
+    const List<Shadow> textShadows = [
+      Shadow(color: Color(0xB3000000), blurRadius: 18),
+      Shadow(color: Color(0x80000000), blurRadius: 6),
+    ];
+
     return SizedBox(
       height: isMobile ? 680 : 700,
       width: double.infinity,
@@ -495,28 +502,59 @@ class _HomePageState extends State<HomePage> {
         fit: StackFit.expand,
         children: [
           Image.asset(
-            // 1800px / q80 is visually the same here but much lighter
-            // than 2200px / q90.
-            'assets/images/home_cover.webp',
+            'assets/images/h_cover_01.webp',
             fit: BoxFit.cover,
+            // Keeps the TV wall / sofa area in view when the image is cropped.
+            alignment: isMobile ? const Alignment(0.2, 0) : Alignment.center,
             // Decorative background: no alt text needed.
             excludeFromSemantics: true,
             errorBuilder: (_, _, _) =>
                 Container(color: const Color(0xFF33302C)),
           ),
+
+          // Layer 1: horizontal dark gradient behind the text column.
+          // The photo is bright, so it stays strong for longer and only
+          // fades out on the far side, letting the room still show through.
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
-                colors: [
-                  backgroundColor.withValues(alpha: 0.94),
-                  backgroundColor.withValues(alpha: 0.66),
-                  backgroundColor.withValues(alpha: 0.12),
-                ],
+                colors: isMobile
+                    ? [
+                        backgroundColor.withValues(alpha: 0.82),
+                        backgroundColor.withValues(alpha: 0.72),
+                      ]
+                    : [
+                        backgroundColor.withValues(alpha: 0.95),
+                        backgroundColor.withValues(alpha: 0.84),
+                        backgroundColor.withValues(alpha: 0.42),
+                        backgroundColor.withValues(alpha: 0.12),
+                      ],
+                stops: isMobile ? null : const [0.0, 0.40, 0.72, 1.0],
               ),
             ),
           ),
+
+          // Layer 2: vertical gradient. Blends the hero into the nav bar on
+          // top and the services section at the bottom, and darkens the area
+          // behind the small footer label.
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  backgroundColor.withValues(alpha: 0.45),
+                  Colors.transparent,
+                  Colors.transparent,
+                  backgroundColor.withValues(alpha: 0.70),
+                ],
+                stops: const [0.0, 0.22, 0.70, 1.0],
+              ),
+            ),
+          ),
+
           Padding(
             padding: EdgeInsets.symmetric(
               horizontal: isMobile ? 24 : 90,
@@ -538,9 +576,11 @@ class _HomePageState extends State<HomePage> {
                         'صمّم / تصوّر / عايش التجربة',
                       ),
                       style: const TextStyle(
-                        color: bronzeColor,
+                        color: Color(0xFFD2B994),
                         fontSize: 10,
                         letterSpacing: 2,
+                        fontWeight: FontWeight.w600,
+                        shadows: textShadows,
                       ),
                     ),
                   ],
@@ -561,6 +601,7 @@ class _HomePageState extends State<HomePage> {
                       height: 1.08,
                       fontWeight: FontWeight.w300,
                       letterSpacing: -1.5,
+                      shadows: textShadows,
                     ),
                   ),
                 ),
@@ -578,9 +619,10 @@ class _HomePageState extends State<HomePage> {
                           'قبل أن تتحول إلى واقع.',
                     ),
                     style: const TextStyle(
-                      color: Color(0xFFD0CCC5),
+                      color: Color(0xFFE6E2DA),
                       fontSize: 15,
                       height: 1.9,
+                      shadows: textShadows,
                     ),
                   ),
                 ),
@@ -611,7 +653,10 @@ class _HomePageState extends State<HomePage> {
                       onPressed: () => _open(AppRoutes.interactive),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: ivoryColor,
-                        side: const BorderSide(color: Color(0xFFBDB6AA)),
+                        backgroundColor: backgroundColor.withValues(
+                          alpha: 0.35,
+                        ),
+                        side: const BorderSide(color: Color(0xFFD6CFC2)),
                         padding: const EdgeInsets.symmetric(
                           horizontal: 26,
                           vertical: 21,
@@ -636,9 +681,10 @@ class _HomePageState extends State<HomePage> {
                     'استوديو التصور المعماري',
                   ),
                   style: const TextStyle(
-                    color: Color(0xFFB8B0A4),
+                    color: Color(0xFFD0C8BC),
                     fontSize: 10,
                     letterSpacing: 2.2,
+                    shadows: textShadows,
                   ),
                 ),
               ],
