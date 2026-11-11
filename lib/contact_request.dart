@@ -346,6 +346,10 @@ class _ContactPageState extends State<ContactPage> {
   String t(String value) =>
       AppLanguage.isArabic ? (_ar[value] ?? value) : value;
 
+  /// Letter spacing is great for Latin uppercase text, but it breaks the
+  /// joined letters of Arabic script, so it is switched off in Arabic.
+  double _ls(double value) => AppLanguage.isArabic ? 0.0 : value;
+
   // ---------------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------------
@@ -950,9 +954,9 @@ class _ContactPageState extends State<ContactPage> {
                       children: [
                         Text(
                           t('PROJECT INQUIRY / 2026'),
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: bronze,
-                            letterSpacing: 2.5,
+                            letterSpacing: _ls(2.5),
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
                           ),
@@ -960,10 +964,10 @@ class _ContactPageState extends State<ContactPage> {
                         const SizedBox(height: 22),
                         Text(
                           t('LET’S CREATE SOMETHING EXCEPTIONAL'),
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: bronze,
                             fontSize: 12,
-                            letterSpacing: 1.6,
+                            letterSpacing: _ls(1.6),
                             height: 1.8,
                           ),
                         ),
@@ -994,28 +998,45 @@ class _ContactPageState extends State<ContactPage> {
                         ),
                         const SizedBox(height: 36),
 
-                        // Quick inquiry via WhatsApp
+                        // Quick inquiry via WhatsApp.
+                        // No fixed height: the button grows with its text, so
+                        // nothing is clipped on narrow phones or in Arabic.
                         SizedBox(
                           width: double.infinity,
-                          height: 58,
-                          child: ElevatedButton.icon(
+                          child: ElevatedButton(
                             onPressed: _openWhatsApp,
-                            icon: const Icon(Icons.chat_bubble_outline),
-                            label: Text(
-                              t('QUICK INQUIRY VIA WHATSAPP'),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.8,
-                              ),
-                            ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: bronze,
                               foregroundColor: bgColor,
                               elevation: 0,
+                              minimumSize: const Size(double.infinity, 58),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
-                              padding: const EdgeInsets.all(24),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 16,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.chat_bubble_outline),
+                                const SizedBox(width: 10),
+                                Flexible(
+                                  child: Text(
+                                    t('QUICK INQUIRY VIA WHATSAPP'),
+                                    textAlign: TextAlign.center,
+                                    softWrap: true,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: _ls(0.8),
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -1322,22 +1343,27 @@ class _ContactPageState extends State<ContactPage> {
 
                         const SizedBox(height: 10),
 
-                        // Submit button
+                        // Submit button (also grows with its text).
                         SizedBox(
                           width: double.infinity,
-                          height: 58,
                           child: ElevatedButton(
                             onPressed: _isSubmitting ? null : _submitForm,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: bronze,
                               foregroundColor: bgColor,
                               elevation: 0,
+                              minimumSize: const Size(double.infinity, 58),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 16,
+                              ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
                               ),
                             ),
                             child: _isSubmitting
                                 ? Row(
+                                    mainAxisSize: MainAxisSize.min,
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       const SizedBox(
@@ -1352,19 +1378,26 @@ class _ContactPageState extends State<ContactPage> {
                                         ),
                                       ),
                                       const SizedBox(width: 12),
-                                      Text(
-                                        t('Sending your request...'),
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
+                                      Flexible(
+                                        child: Text(
+                                          t('Sending your request...'),
+                                          textAlign: TextAlign.center,
+                                          softWrap: true,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                          ),
                                         ),
                                       ),
                                     ],
                                   )
                                 : Text(
                                     t('SUBMIT PROJECT BRIEF'),
-                                    style: const TextStyle(
+                                    textAlign: TextAlign.center,
+                                    softWrap: true,
+                                    style: TextStyle(
                                       fontWeight: FontWeight.w700,
-                                      letterSpacing: 1.2,
+                                      letterSpacing: _ls(1.2),
+                                      height: 1.3,
                                     ),
                                   ),
                           ),
@@ -1389,10 +1422,10 @@ class _ContactPageState extends State<ContactPage> {
 
                         Text(
                           t('INNOVISTA | Architectural Visualization'),
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: bronze,
                             fontSize: 13,
-                            letterSpacing: 0.7,
+                            letterSpacing: _ls(0.7),
                           ),
                         ),
                         const SizedBox(height: 8),

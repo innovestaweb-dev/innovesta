@@ -61,6 +61,13 @@ const String _kMetaDescription = '_meta_description';
 const String _kAltCover = '_alt_cover';
 const String _kAltGalleryPrefix = '_alt_gallery_';
 
+// Which public page the project belongs to. Stored as `_section` inside
+// `specifications`. A project WITHOUT this key (every project created before
+// this feature) is treated as "portfolio", so old projects are not affected.
+const String _kSection = '_section';
+const String _sectionPortfolio = 'portfolio';
+const String _sectionInteractive = 'interactive';
+
 // -----------------------------------------------------------------------------
 // Image compression (top-level so it can run through `compute`)
 // -----------------------------------------------------------------------------
@@ -185,6 +192,9 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
   String? _category;
   late List<String> _categories;
 
+  // Which public page the project is shown on (portfolio / interactive)
+  String _displaySection = _sectionPortfolio;
+
   // Cover image (local, compressed)
   Uint8List? _coverImageBytes;
   String _coverExtension = 'jpg';
@@ -256,6 +266,7 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
     final metaTitle = take(_kMetaTitle);
     final metaDescription = take(_kMetaDescription);
     final coverAlt = take(_kAltCover);
+    final section = take(_kSection);
 
     final galleryUrls = project?.gallery ?? const <String>[];
     for (var i = 0; i < galleryUrls.length; i++) {
@@ -301,6 +312,11 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
       _categories.add(existingCategory);
     }
     _category = existingCategory.isEmpty ? null : existingCategory;
+
+    // Old projects have no `_section` key, so they stay in "portfolio".
+    _displaySection = section == _sectionInteractive
+        ? _sectionInteractive
+        : _sectionPortfolio;
 
     _isPublished = project?.isPublished ?? false;
     _slugEditedManually = (project?.slug ?? '').isNotEmpty;
@@ -395,6 +411,7 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
         'slug': _slugController.text,
         'slugManual': _slugEditedManually,
         'category': _category,
+        'section': _displaySection,
         'location': _locationController.text,
         'area': _areaController.text,
         'year': _yearController.text,
@@ -498,6 +515,13 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
       _seoDescriptionController.text = s('seoDescription');
       _orderController.text = s('order');
       _isPublished = data['published'] == true;
+
+      // Drafts saved before this feature have no section: keep the current one.
+      final draftSection = s('section');
+      if (draftSection == _sectionInteractive ||
+          draftSection == _sectionPortfolio) {
+        _displaySection = draftSection;
+      }
 
       final category = (data['category'] ?? '').toString();
       _category = category.isEmpty ? null : category;
@@ -1064,7 +1088,7 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
 
       _setProgress('Saving project...');
 
-      // Specifications + hidden data (alt texts, SEO)
+      // Specifications + hidden data (alt texts, SEO, display section)
       final specs = _visibleSpecifications();
 
       void putHidden(String key, String value) {
@@ -1079,6 +1103,9 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
 
       putHidden(_kMetaTitle, _seoTitleController.text);
       putHidden(_kMetaDescription, _seoDescriptionController.text);
+
+      // Which public page this project belongs to.
+      putHidden(_kSection, _displaySection);
 
       final project = AdminProject(
         id: widget.project?.id,
@@ -1265,6 +1292,17 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
                         ),
                       ),
                       const SizedBox(height: 20),
+                      Text(
+                        _displaySection == _sectionInteractive
+                            ? 'SHOWN ON: INTERACTIVE PAGE'
+                            : 'SHOWN ON: SELECTED WORK PAGE',
+                        style: const TextStyle(
+                          color: _muted,
+                          fontSize: 10,
+                          letterSpacing: 1.6,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       if (_category != null)
                         Text(
                           _category!.toUpperCase(),
@@ -1589,6 +1627,117 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
     }
 
     return _previewMessage(Icons.image_outlined, 'No cover image selected');
+  }
+
+  // One selectable card of the "Display Section" picker.
+  Widget _sectionOption({
+    required String value,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    final selected = _displaySection == value;
+
+    return InkWell(
+      onTap: _isSaving
+          ? null
+          : () {
+              setState(() => _displaySection = value);
+              _touch();
+            },
+      borderRadius: BorderRadius.circular(3),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF2A2621) : _surface,
+          border: Border.all(
+            color: selected ? _bronze : _border,
+            width: selected ? 1.5 : 1,
+          ),
+          borderRadius: BorderRadius.circular(3),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: selected ? _bronze : _muted, size: 26),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: selected ? _ivory : _muted,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: _muted,
+                      fontSize: 11,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (selected)
+              const Icon(Icons.check_circle, color: _bronze, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDisplaySectionPicker() {
+    final portfolio = _sectionOption(
+      value: _sectionPortfolio,
+      icon: Icons.image_outlined,
+      title: 'Selected Work (Renders)',
+      subtitle: 'Still renders and animation. Shown on the Selected Work page.',
+    );
+
+    final interactive = _sectionOption(
+      value: _sectionInteractive,
+      icon: Icons.view_in_ar_outlined,
+      title: 'Interactive Experience',
+      subtitle:
+          'Interactive walkthroughs and VR. Shown on the Interactive page.',
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Where should this project appear? *',
+          style: TextStyle(color: _ivory, fontSize: 12),
+        ),
+        const SizedBox(height: 10),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 620) {
+              return Column(
+                children: [portfolio, const SizedBox(height: 10), interactive],
+              );
+            }
+
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: portfolio),
+                const SizedBox(width: 12),
+                Expanded(child: interactive),
+              ],
+            );
+          },
+        ),
+      ],
+    );
   }
 
   Widget _buildCategoryPicker() {
@@ -2132,6 +2281,9 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    _sectionTitle('Display Section'),
+                    _buildDisplaySectionPicker(),
+
                     _sectionTitle('Basic Information'),
                     _field(
                       'Project Name *',
