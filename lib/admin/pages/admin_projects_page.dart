@@ -451,6 +451,11 @@ class _ProjectCard extends StatelessWidget {
     final coverImage = project.coverImage?.trim() ?? '';
     final hasVideo = (project.videoUrl?.trim() ?? '').isNotEmpty;
 
+    // Projects created before the "Display Section" feature have no
+    // `_section` value, so they count as normal (render) projects.
+    final Map<String, dynamic> specs = project.specifications;
+    final isInteractive = specs['_section']?.toString() == 'interactive';
+
     final details = [
       if (project.category?.trim().isNotEmpty == true) project.category!.trim(),
       if (project.location?.trim().isNotEmpty == true) project.location!.trim(),
@@ -475,6 +480,8 @@ class _ProjectCard extends StatelessWidget {
                       ? Image.network(
                           coverImage,
                           fit: BoxFit.cover,
+                          // Decode at thumbnail size, not full 1920px.
+                          cacheWidth: 320,
                           errorBuilder: (_, _, _) => _imagePlaceholder(),
                         )
                       : _imagePlaceholder(),
@@ -505,7 +512,10 @@ class _ProjectCard extends StatelessWidget {
                       ),
                     ],
                     const SizedBox(height: 9),
-                    Row(
+                    Wrap(
+                      spacing: 14,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Text(
                           project.isPublished ? 'PUBLISHED' : 'DRAFT',
@@ -516,23 +526,48 @@ class _ProjectCard extends StatelessWidget {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        if (hasVideo) ...[
-                          const SizedBox(width: 14),
-                          const Icon(
-                            Icons.videocam_outlined,
-                            color: _muted,
-                            size: 14,
+                        // Which public page this project appears on.
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 3,
                           ),
-                          const SizedBox(width: 4),
-                          const Text(
-                            'VIDEO',
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: isInteractive ? _bronze : _border,
+                            ),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                          child: Text(
+                            isInteractive ? 'INTERACTIVE' : 'RENDER',
                             style: TextStyle(
-                              color: _muted,
+                              color: isInteractive ? _bronze : _muted,
                               fontSize: 9,
                               letterSpacing: 1.3,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                        ],
+                        ),
+                        if (hasVideo)
+                          const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.videocam_outlined,
+                                color: _muted,
+                                size: 14,
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                'VIDEO',
+                                style: TextStyle(
+                                  color: _muted,
+                                  fontSize: 9,
+                                  letterSpacing: 1.3,
+                                ),
+                              ),
+                            ],
+                          ),
                       ],
                     ),
                   ],

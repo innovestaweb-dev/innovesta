@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/admin_project.dart';
 import '../services/project_service.dart';
+import '../utils/webp_encoder.dart';
 
 // -----------------------------------------------------------------------------
 // Theme
@@ -35,9 +36,10 @@ const String _projectsTable = 'projects';
 
 const int _maxImageInputBytes = 20 * 1024 * 1024; // before compression
 const int _maxImageUploadBytes = 8 * 1024 * 1024; // after compression
-const int _maxVideoBytes = 50 * 1024 * 1024;
+const int _maxVideoBytes = 20 * 1024 * 1024;
 const int _maxImageDimension = 1920;
 const int _jpegQuality = 85;
+const double _webpQuality = 0.82;
 const int _maxGalleryImages = 30;
 
 const Set<String> _imageExtensions = {'jpg', 'jpeg', 'png', 'webp', 'gif'};
@@ -69,7 +71,8 @@ const String _sectionPortfolio = 'portfolio';
 const String _sectionInteractive = 'interactive';
 
 // -----------------------------------------------------------------------------
-// Image compression (top-level so it can run through `compute`)
+// Image compression fallback (top-level so it can run through `compute`).
+// Used only when WebP encoding is not available (desktop / mobile / old Safari).
 // -----------------------------------------------------------------------------
 
 class _ImageJob {
@@ -694,6 +697,10 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
   // ---------------------------------------------------------------------------
 
   /// Validates, reads and compresses a picked image. Returns null on failure.
+  ///
+  /// On web the image is resized and converted to WebP with the browser's
+  /// Canvas. If WebP is not available (desktop, mobile, old Safari) it falls
+  /// back to the Dart JPG/PNG compressor, so saving never breaks.
   Future<_ProcessedImage?> _readAndProcessImage(PlatformFile file) async {
     final extension = _extensionOf(file.name);
 
@@ -721,7 +728,24 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
       return null;
     }
 
-    final result = await compute(_compressImage, _ImageJob(bytes, extension));
+    _ProcessedImage result;
+
+    if (extension == 'gif') {
+      // Keep GIFs untouched so animation is not lost.
+      result = _ProcessedImage(bytes, 'gif');
+    } else {
+      final webp = await encodeWebp(
+        bytes,
+        maxDim: _maxImageDimension,
+        quality: _webpQuality,
+      );
+
+      if (webp != null && webp.isNotEmpty) {
+        result = _ProcessedImage(webp, 'webp');
+      } else {
+        result = await compute(_compressImage, _ImageJob(bytes, extension));
+      }
+    }
 
     if (result.bytes.length > _maxImageUploadBytes) {
       _showSnack(
@@ -885,7 +909,7 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
         _showSnack(
           'Video is too large (${_formatBytes(bytes.length)}). '
           'Maximum is ${_formatBytes(_maxVideoBytes)}. '
-          'For bigger videos use a YouTube or Vimeo link.',
+          'Compress it first (720p, H.264, faststart) and upload again.',
           isError: true,
         );
         return;
@@ -930,6 +954,8 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
       fileOptions: FileOptions(
         upsert: true,
         contentType: _contentTypeFor(extension),
+        // Files have unique names per save, so they can be cached for a year.
+        cacheControl: '31536000',
       ),
     );
 
@@ -1810,7 +1836,8 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
         if (hasSelectedImage) ...[
           const SizedBox(height: 8),
           Text(
-            '${_coverFileName ?? ''} • ${_formatBytes(_coverImageBytes!.length)} (optimized)',
+            '${_coverFileName ?? ''} • ${_formatBytes(_coverImageBytes!.length)} '
+            '(optimized, .$_coverExtension)',
             style: const TextStyle(color: _muted, fontSize: 11),
           ),
         ],
@@ -1841,7 +1868,7 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
         const SizedBox(height: 8),
         Text(
           'JPG, PNG, WEBP or GIF. Images are resized to ${_maxImageDimension}px '
-          'and compressed automatically. Uploaded when you save.',
+          'and converted to WebP automatically. Uploaded when you save.',
           style: const TextStyle(color: _muted, fontSize: 11),
         ),
         const SizedBox(height: 18),
@@ -2036,7 +2063,7 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
                   if (subtitle != null)
                     Text(
                       subtitle,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: _muted, fontSize: 11),
                     ),
@@ -2097,7 +2124,8 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'YouTube video',
+            'YouTube video — note: the Interactive page plays direct video '
+            'files (MP4/WEBM) only, so YouTube links will not play there.',
             style: TextStyle(color: _muted, fontSize: 11),
           ),
         ],
@@ -2108,7 +2136,9 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
       return card(
         icon: Icons.play_circle_outline,
         title: 'Vimeo video',
-        subtitle: url,
+        subtitle:
+            'The Interactive page plays direct video files (MP4/WEBM) only, '
+            'so Vimeo links will not play there.\n$url',
       );
     }
 
@@ -2127,7 +2157,7 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _field(
-          'Video URL (YouTube / Vimeo / direct link)',
+          'Video URL (direct MP4/WEBM link)',
           _videoController,
           hint: 'https://...',
           keyboardType: TextInputType.url,
@@ -2160,7 +2190,8 @@ class _AdminProjectFormPageState extends State<AdminProjectFormPage> {
         const SizedBox(height: 8),
         Text(
           'MP4, WEBM, MOV or M4V up to ${_formatBytes(_maxVideoBytes)}. '
-          'For larger videos use a YouTube or Vimeo link.',
+          'Videos are NOT compressed here: compress before uploading '
+          '(720p, H.264, faststart) so the site loads quickly.',
           style: const TextStyle(color: _muted, fontSize: 11),
         ),
         if (hasVideo) ...[const SizedBox(height: 14), _buildVideoPreview()],

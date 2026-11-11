@@ -11,6 +11,17 @@ const Color _ivory = Color(0xFFF4EFE6);
 const Color _bronze = Color(0xFFB6A080);
 const Color _muted = Color(0xFFAAA69F);
 
+// -----------------------------------------------------------------------------
+// Hero background video (5 seconds, muted, looping).
+//
+// 1) Compress it:  ffmpeg -i in.mp4 -vf "scale=-2:720" -c:v libx264 -crf 27 \
+//                  -preset slow -movflags +faststart -an hero.mp4
+// 2) Upload hero.mp4 (and an optional hero.webp poster) to your Supabase bucket.
+// 3) Paste the public URLs below. Leave _heroVideoUrl empty to disable it.
+// -----------------------------------------------------------------------------
+const String _heroVideoUrl = '';
+const String _heroPosterUrl = '';
+
 // Safely handles nullable text fields from AdminProject.
 String _safeText(String? value) => value?.trim() ?? '';
 
@@ -183,70 +194,80 @@ class _InteractivePageState extends State<InteractivePage> {
       builder: (context, constraints) {
         final isMobile = constraints.maxWidth < 700;
 
-        return Container(
-          width: double.infinity,
-          padding: EdgeInsets.symmetric(
-            horizontal: isMobile ? 24 : 80,
-            vertical: isMobile ? 65 : 95,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _label(_t('INTERACTIVE ARCHITECTURE / 01', 'عمارة تفاعلية / 01')),
-              const SizedBox(height: 26),
-              Text(
-                _t(
-                  'Don’t Just See It.\nExperience It.',
-                  'لا تكتفِ بالمشاهدة.\nعِش التجربة.',
-                ),
-                style: TextStyle(
-                  color: _ivory,
-                  fontSize: isMobile ? 43 : 76,
-                  height: 1.12,
-                  fontWeight: FontWeight.w300,
-                ),
+        return Stack(
+          children: [
+            // Background video. It only fills the space; the Container below
+            // decides the hero height.
+            const Positioned.fill(child: _HeroVideoBackground()),
+
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(
+                horizontal: isMobile ? 24 : 80,
+                vertical: isMobile ? 65 : 95,
               ),
-              const SizedBox(height: 24),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 650),
-                child: Text(
-                  _t(
-                    'Step beyond traditional architectural renders. '
-                        'Explore spaces, experience lighting, and discover '
-                        'design possibilities through real-time interactive '
-                        'experiences and cinematic architectural walkthroughs.',
-                    'تجاوز الصور المعمارية التقليدية. استكشف المساحات، '
-                        'وجرّب الإضاءة، واكتشف إمكانيات التصميم من خلال '
-                        'تجارب تفاعلية لحظية وجولات معمارية سينمائية.',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _label(
+                    _t('INTERACTIVE ARCHITECTURE / 01', 'عمارة تفاعلية / 01'),
                   ),
-                  style: const TextStyle(
-                    color: _muted,
-                    fontSize: 15,
-                    height: 1.9,
+                  const SizedBox(height: 26),
+                  Text(
+                    _t(
+                      'Don’t Just See It.\nExperience It.',
+                      'لا تكتفِ بالمشاهدة.\nعِش التجربة.',
+                    ),
+                    style: TextStyle(
+                      color: _ivory,
+                      fontSize: isMobile ? 43 : 76,
+                      height: 1.12,
+                      fontWeight: FontWeight.w300,
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 24),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 650),
+                    child: Text(
+                      _t(
+                        'Step beyond traditional architectural renders. '
+                            'Explore spaces, experience lighting, and discover '
+                            'design possibilities through real-time interactive '
+                            'experiences and cinematic architectural walkthroughs.',
+                        'تجاوز الصور المعمارية التقليدية. استكشف المساحات، '
+                            'وجرّب الإضاءة، واكتشف إمكانيات التصميم من خلال '
+                            'تجارب تفاعلية لحظية وجولات معمارية سينمائية.',
+                      ),
+                      style: const TextStyle(
+                        color: _muted,
+                        fontSize: 15,
+                        height: 1.9,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 34),
+                  OutlinedButton(
+                    onPressed: _scrollToProjects,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _ivory,
+                      side: const BorderSide(color: _bronze),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 26,
+                        vertical: 19,
+                      ),
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.zero,
+                      ),
+                    ),
+                    child: Text(
+                      _t('EXPLORE PROJECTS', 'استكشف المشاريع'),
+                      style: TextStyle(letterSpacing: _ls(1)),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 34),
-              OutlinedButton(
-                onPressed: _scrollToProjects,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _ivory,
-                  side: const BorderSide(color: _bronze),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 26,
-                    vertical: 19,
-                  ),
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.zero,
-                  ),
-                ),
-                child: Text(
-                  _t('EXPLORE PROJECTS', 'استكشف المشاريع'),
-                  style: TextStyle(letterSpacing: _ls(1)),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         );
       },
     );
@@ -798,6 +819,105 @@ class _InteractivePageState extends State<InteractivePage> {
 }
 
 // =============================================================================
+// Hero background video (muted, looping, behind the hero text)
+// =============================================================================
+
+class _HeroVideoBackground extends StatefulWidget {
+  const _HeroVideoBackground();
+
+  @override
+  State<_HeroVideoBackground> createState() => _HeroVideoBackgroundState();
+}
+
+class _HeroVideoBackgroundState extends State<_HeroVideoBackground> {
+  VideoPlayerController? _controller;
+  bool _ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    if (_heroVideoUrl.isEmpty) return;
+
+    VideoPlayerController? controller;
+
+    try {
+      controller = VideoPlayerController.networkUrl(
+        Uri.parse(_heroVideoUrl),
+        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+      );
+      _controller = controller;
+
+      await controller.initialize();
+
+      // Browsers only allow autoplay when the video is muted.
+      await controller.setVolume(0);
+      await controller.setLooping(true);
+      await controller.play();
+
+      if (mounted) setState(() => _ready = true);
+    } catch (_) {
+      // If the video fails, the poster / plain background stays visible.
+      _controller = null;
+      controller?.dispose();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+
+    return ClipRect(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const ColoredBox(color: _bg),
+
+          // Light poster shows immediately while the video is loading.
+          if (_heroPosterUrl.isNotEmpty)
+            Image.network(
+              _heroPosterUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => const SizedBox.shrink(),
+            ),
+
+          if (controller != null && _ready)
+            FittedBox(
+              fit: BoxFit.cover,
+              clipBehavior: Clip.hardEdge,
+              child: SizedBox(
+                width: controller.value.size.width,
+                height: controller.value.size.height,
+                child: VideoPlayer(controller),
+              ),
+            ),
+
+          // Dark overlay so the hero text stays readable.
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.black.withValues(alpha: 0.55), _bg],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
 // Main inline video player
 // =============================================================================
 
@@ -1262,6 +1382,8 @@ class _ProjectVideoCard extends StatelessWidget {
                       Image.network(
                         imageUrl,
                         fit: BoxFit.cover,
+                        // Decode at card size instead of the full 1920px image.
+                        cacheWidth: 800,
                         errorBuilder: (_, _, _) => _imageFallback(),
                       )
                     else
